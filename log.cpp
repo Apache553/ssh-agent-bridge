@@ -1,11 +1,11 @@
 #include "log.h"
 
+#include <ctime>
+#include <iomanip>
+
 #include <Windows.h>
 #include <io.h>
 #include <fcntl.h>
-
-#include <ctime>
-#include <iomanip>
 
 static const wchar_t* TranslateLogLevel(sab::Logger::LogLevel level)noexcept
 {
@@ -46,7 +46,24 @@ sab::Logger& sab::Logger::GetInstance(bool createConsole)noexcept
 
 FILE* OpenHandleToFILE(HANDLE handle, const wchar_t* mode)noexcept
 {
-	int fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle), _O_TEXT);
+	HANDLE handle2;
+
+
+	/*
+	 * _open_osfhandle and fdopen will take over the ownership of a handle,
+	 * duplicate one to avoid double close a handle exception
+	 */
+	DuplicateHandle(
+		GetCurrentProcess(),
+		handle,
+		GetCurrentProcess(),
+		&handle2,
+		0,
+		FALSE,
+		DUPLICATE_SAME_ACCESS);
+	
+	
+	int fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle2), _O_TEXT);
 	FILE* file = _wfdopen(fd, mode);
 	std::setvbuf(file, nullptr, _IONBF, 0);
 	return file;
@@ -62,7 +79,7 @@ sab::Logger::Logger(bool createConsole)noexcept
 	{
 		if (!AttachConsole(ATTACH_PARENT_PROCESS))
 		{
-			if (!AllocConsole())
+			if (GetLastError() != ERROR_ACCESS_DENIED && !AllocConsole())
 			{
 				// failed to get a console
 				exit(255);
@@ -87,9 +104,9 @@ sab::Logger::~Logger()noexcept
 {
 	if (allocatedConsole)
 	{
-		FreeConsole();
 		std::fclose(stdinStream);
 		std::fclose(stdoutStream);
 		std::fclose(stderrStream);
+		FreeConsole();
 	}
 }
