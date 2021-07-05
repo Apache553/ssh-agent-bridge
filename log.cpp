@@ -7,7 +7,26 @@
 #include <ctime>
 #include <iomanip>
 
-void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line, const std::wstring& str) noexcept
+static const wchar_t* TranslateLogLevel(sab::Logger::LogLevel level)noexcept
+{
+	switch (level)
+	{
+	case sab::Logger::Debug:
+		return L"Debug";
+	case sab::Logger::Info:
+		return L"Info";
+	case sab::Logger::Warning:
+		return L"Warning";
+	case sab::Logger::Error:
+		return L"Error";
+	case sab::Logger::Fatal:
+		return L"FATAL";
+	}
+	return L""; // shut compiler up
+}
+
+void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line,
+	const std::wstring& str)noexcept
 {
 	std::time_t curTime = std::time(nullptr);
 	std::tm tm;
@@ -19,13 +38,13 @@ void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line, co
 	std::fwprintf(stdoutStream, L"%s: %s\n", oss.str().c_str(), str.c_str());
 }
 
-sab::Logger& sab::Logger::GetInstance(bool createConsole)
+sab::Logger& sab::Logger::GetInstance(bool createConsole)noexcept
 {
 	static Logger instance(createConsole);
 	return instance;
 }
 
-FILE* OpenHandleToFILE(HANDLE handle, const wchar_t* mode)
+FILE* OpenHandleToFILE(HANDLE handle, const wchar_t* mode)noexcept
 {
 	int fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle), _O_TEXT);
 	FILE* file = _wfdopen(fd, mode);
@@ -33,8 +52,9 @@ FILE* OpenHandleToFILE(HANDLE handle, const wchar_t* mode)
 	return file;
 }
 
-sab::Logger::Logger(bool createConsole)
-	:stdinStream(nullptr), stdoutStream(nullptr), stderrStream(nullptr)
+sab::Logger::Logger(bool createConsole)noexcept
+	:stdinStream(nullptr), stdoutStream(nullptr), stderrStream(nullptr),
+	allocatedConsole(createConsole)
 {
 	std::setlocale(LC_ALL, "");
 
@@ -59,5 +79,17 @@ sab::Logger::Logger(bool createConsole)
 	else
 	{
 		// leave streams null
+		allocatedConsole = 0;
+	}
+}
+
+sab::Logger::~Logger()noexcept
+{
+	if (allocatedConsole)
+	{
+		FreeConsole();
+		std::fclose(stdinStream);
+		std::fclose(stdoutStream);
+		std::fclose(stderrStream);
 	}
 }

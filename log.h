@@ -24,37 +24,14 @@ namespace sab
 		FILE* stdoutStream;
 		FILE* stderrStream;
 
+		int allocatedConsole;
+
 		void WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 			const std::wstring& str)noexcept;
 
-		static inline const wchar_t* TranslateLogLevel(LogLevel level)noexcept
-		{
-			switch (level)
-			{
-			case Debug:
-				return L"Debug";
-			case Info:
-				return L"Info";
-			case Warning:
-				return L"Warning";
-			case Error:
-				return L"Error";
-			case Fatal:
-				return L"FATAL";
-			}
-			return L""; // shut compiler up
-		}
-
-		Logger(bool createConsole);
+		Logger(bool createConsole)noexcept;
+		~Logger()noexcept;
 	public:
-
-		template<typename T>
-		auto& InsertStream(std::wostringstream& oss, T&& arg)
-		{
-			oss << arg;
-			return oss;
-		}
-		
 		template<typename ...Args>
 		void WriteLog(LogLevel level, const wchar_t* file, int line,
 			Args... args)noexcept
@@ -64,7 +41,7 @@ namespace sab
 			WriteLogImpl(level, file, line, oss.str());
 		}
 
-		static Logger& GetInstance(bool createConsole = false);
+		static Logger& GetInstance(bool createConsole = false)noexcept;
 	};
 }
 
