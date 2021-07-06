@@ -11,6 +11,43 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
+static std::wstring GetCurrentUserSid()
+{
+	HANDLE processToken = GetCurrentProcessToken();
+	TOKEN_USER* userTokenInfo;
+	DWORD bufferSize;
+	std::wstring ret;
+
+	if ((GetTokenInformation(processToken, TokenUser, nullptr,
+		0, &bufferSize) == 0) && (GetLastError() == ERROR_INSUFFICIENT_BUFFER))
+	{
+		std::unique_ptr<char[]> buffer(new char[bufferSize]);
+		if (GetTokenInformation(processToken, TokenUser, buffer.get()
+			, bufferSize, &bufferSize) != 0) {
+			wchar_t* sidString;
+			userTokenInfo = reinterpret_cast<TOKEN_USER*>(buffer.get());
+			if (ConvertSidToStringSidW(userTokenInfo->User.Sid, &sidString) != 0)
+			{
+				ret = sidString;
+				LocalFree(sidString);
+			}
+			else
+			{
+				LogError(L"cannot convert sid to string! ", LogLastError);
+			}
+		}
+		else
+		{
+			LogError(L"cannot get current user sid! ", LogLastError);
+		}
+	}
+	else
+	{
+		LogError(L"cannot get current user sid buffer length! ", LogLastError);
+	}
+	return ret;
+}
+
 sab::Win32NamedPipeListener::Win32NamedPipeListener(
 	const std::wstring& pipePath
 )
@@ -41,14 +78,23 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 
 	OVERLAPPED overlapped;
 	SECURITY_ATTRIBUTES sa;
-	const wchar_t pipeSDDL[] = L"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x12019b;;;AU)";
+	std::wostringstream sddlStream;
+	std::wstring sid = GetCurrentUserSid();
+
+	if (sid.empty())
+	{
+		return false;
+	}
+
+	// deny everyone except current user
+	sddlStream << L"D:P(A;;GA;;;" << sid << ")(D;;GA;;;WD)";
 
 	std::memset(&sa, 0, sizeof(SECURITY_ATTRIBUTES));
 	sa.nLength = sizeof(SECURITY_ATTRIBUTES);
 	sa.bInheritHandle = FALSE;
 
 	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-		pipeSDDL,
+		sddlStream.str().c_str(),
 		SDDL_REVISION_1,
 		&sa.lpSecurityDescriptor,
 		&sa.nLength))
@@ -98,7 +144,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 			MAX_PIPE_BUFFER_SIZE,
 			MAX_PIPE_BUFFER_SIZE,
 			0,
-			nullptr);
+			&sa);
 		if (context->pipeHandle == INVALID_HANDLE_VALUE)
 		{
 			LogError(L"cannot create listener pipe! ", LogLastError);
@@ -140,7 +186,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 		{
 			// connected
 			LogDebug(L"accepted new connection");
-			
+
 			if (CreateIoCompletionPort(context->pipeHandle, iocpHandle,
 				reinterpret_cast<ULONG_PTR>(context.get()), 0) != iocpHandle)
 			{
@@ -156,7 +202,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 			}
 			(*iter)->selfIterator = iter;
 			(*iter)->message.source = this->shared_from_this();
-			
+
 			OnIoCompletion(iter->get(), true);
 		}
 	}
@@ -372,11 +418,17 @@ bool sab::Win32NamedPipeListener::IsCancelled() const
 	return WaitForSingleObject(cancelEvent, 0) == WAIT_OBJECT_0;
 }
 
-void sab::Win32NamedPipeListener::PostBackReply(SshMessageEnvelope* message)
+void sab::Win32NamedPipeListener::PostBackReply(SshMessageEnvelope* message, bool status)
 {
 	PipeContext* context = reinterpret_cast<PipeContext*>(message->id);
 	context->externalReference = false;
-	OnIoCompletion(context, true);
+	if (status && context->pipeStatus != PipeContext::Status::Destroyed) {
+		OnIoCompletion(context, true);
+	}
+	else
+	{
+		FinalizeContext(context);
+	}
 }
 
 sab::Win32NamedPipeListener::~Win32NamedPipeListener()

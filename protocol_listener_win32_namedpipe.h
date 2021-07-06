@@ -71,7 +71,6 @@ namespace sab
 		std::mutex listMutex;
 		std::list<std::shared_ptr<PipeContext>> contextList;
 
-		std::atomic<bool> cancelFlag = false;
 		HANDLE cancelEvent = NULL;
 	public:
 		Win32NamedPipeListener(const std::wstring& pipePath);
@@ -82,9 +81,9 @@ namespace sab
 
 		bool IsCancelled()const override;
 
-		void PostBackReply(SshMessageEnvelope*)override;
+		void PostBackReply(SshMessageEnvelope*, bool status)override;
 
-		virtual ~Win32NamedPipeListener();
+		~Win32NamedPipeListener()override;
 	private:
 		bool ListenLoop();
 

@@ -12,7 +12,7 @@ namespace sab
 	/// Base class of listeners
 	/// all listeners can only be used with shared_ptr
 	/// </summary>
-	class ProtocolListenerBase:public std::enable_shared_from_this<ProtocolListenerBase>
+	class ProtocolListenerBase :public std::enable_shared_from_this<ProtocolListenerBase>
 	{
 	public:
 		/// <summary>
@@ -34,16 +34,16 @@ namespace sab
 		/// <summary>
 		/// Post a reply message
 		/// </summary>
-		virtual void PostBackReply(SshMessageEnvelope*) = 0;
-		
+		virtual void PostBackReply(SshMessageEnvelope* message, bool status) = 0;
+
 		ProtocolListenerBase() = default;
 		ProtocolListenerBase(ProtocolListenerBase&&) = default;
 		ProtocolListenerBase(const ProtocolListenerBase&) = delete;
 
 		ProtocolListenerBase& operator=(ProtocolListenerBase&&) = default;
 		ProtocolListenerBase& operator=(const ProtocolListenerBase&) = delete;
-		
+
 		virtual ~ProtocolListenerBase() = default;
 	};
-	
+
 }
