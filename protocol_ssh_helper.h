@@ -36,6 +36,6 @@ namespace sab
 	};
 
 	static constexpr size_t MAX_MESSAGE_SIZE = 256 * 1024;
-
+	static constexpr size_t HEADER_SIZE = sizeof(uint32_t);
 	
 }

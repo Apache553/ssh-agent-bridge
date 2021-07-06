@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include "protocol_ssh_helper.h"
+
 #include <memory>
 
 namespace sab
@@ -8,6 +10,7 @@ namespace sab
 
 	/// <summary>
 	/// Base class of listeners
+	/// all listeners can only be used with shared_ptr
 	/// </summary>
 	class ProtocolListenerBase:public std::enable_shared_from_this<ProtocolListenerBase>
 	{
@@ -27,6 +30,11 @@ namespace sab
 		/// </summary>
 		/// <returns>true if cancel request present</returns>
 		virtual bool IsCancelled()const = 0;
+
+		/// <summary>
+		/// Post a reply message
+		/// </summary>
+		virtual void PostBackReply(SshMessageEnvelope*) = 0;
 		
 		ProtocolListenerBase() = default;
 		ProtocolListenerBase(ProtocolListenerBase&&) = default;

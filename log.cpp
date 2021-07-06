@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <iomanip>
+#include <thread>
 
 #include <Windows.h>
 #include <io.h>
@@ -33,6 +34,7 @@ void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 	localtime_s(&tm, &curTime);
 	std::wostringstream oss;
 	oss << L'[' << std::put_time(&tm, L"%F %T");
+	oss << L"][" << std::this_thread::get_id();
 	oss << L"][" << TranslateLogLevel(level) << L"] ";
 	oss << file << L':' << line;
 	std::fwprintf(stdoutStream, L"%s: %s\n", oss.str().c_str(), str.c_str());

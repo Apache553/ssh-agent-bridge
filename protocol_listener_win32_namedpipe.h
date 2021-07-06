@@ -1,15 +1,17 @@
 
 #pragma once
 
+#include "util.h"
+#include "protocol_ssh_helper.h"
 #include "protocol_listener_base.h"
+
+#include <atomic>
+#include <string>
+#include <list>
+#include <mutex>
 
 #include <Windows.h>
 
-#include <string>
-#include <list>
-#include <atomic>
-
-#include "protocol_ssh_helper.h"
 
 namespace sab
 {
@@ -17,30 +19,57 @@ namespace sab
 	class Win32NamedPipeListener : public ProtocolListenerBase
 	{
 	public:
+		static constexpr size_t MAX_PIPE_BUFFER_SIZE = 4 * 1024;
+
 		struct PipeContext
 		{
+			/// <summary>
+			/// Indicates current pipe status
+			/// </summary>
 			enum class Status
 			{
-				Ready,
+				Initialized,
+				Listening,
 				ReadHeader,
 				ReadBody,
+				WaitReply,
 				Write,
 				Destroyed
 			};
 
+			OVERLAPPED overlapped;
 			HANDLE pipeHandle;
 			Status pipeStatus;
 
 			SshMessageEnvelope message;
 
-			std::list<PipeContext>::iterator selfIterator;
+			std::list<std::shared_ptr<PipeContext>>::iterator selfIterator;
+
+			char buffer[MAX_PIPE_BUFFER_SIZE];
+			int needTransferBytes;
+			int transferredBytes;
+
+			bool externalReference;
+			bool disposed;
+
+		public:
+
+			PipeContext();
+			PipeContext(const PipeContext&) = delete;
+			PipeContext(PipeContext&&) = delete;
+
+			PipeContext& operator=(const PipeContext&) = delete;
+			PipeContext& operator=(PipeContext&&) = delete;
+
+			~PipeContext();
+
 		};
 
-		static constexpr size_t MAX_PIPE_BUFFER_SIZE = 4 * 1024;
 	private:
 		std::wstring pipePath;
 
-		std::list<PipeContext> contextList;
+		std::mutex listMutex;
+		std::list<std::shared_ptr<PipeContext>> contextList;
 
 		std::atomic<bool> cancelFlag = false;
 		HANDLE cancelEvent = NULL;
@@ -53,7 +82,14 @@ namespace sab
 
 		bool IsCancelled()const override;
 
-		virtual ~Win32NamedPipeListener();
+		void PostBackReply(SshMessageEnvelope*)override;
 
+		virtual ~Win32NamedPipeListener();
+	private:
+		bool ListenLoop();
+
+		void OnIoCompletion(PipeContext* context, bool noRealIo = false);
+		void FinalizeContext(PipeContext* context);
+		void IocpThreadProc(HANDLE iocpHandle);
 	};
 }
