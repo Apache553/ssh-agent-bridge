@@ -24,6 +24,7 @@ sab::IoContext::~IoContext()
 void sab::IoContext::Dispose()
 {
 	if (state != State::Destroyed) {
+		LogDebug(L"terminating connection: ", handle);
 		CloseHandle(handle);
 		handle = INVALID_HANDLE_VALUE;
 	}
@@ -51,13 +52,10 @@ sab::IocpListenerConnectionManager::IocpListenerConnectionManager()
 
 sab::IocpListenerConnectionManager::~IocpListenerConnectionManager()
 {
-
 	if (cancelEvent != NULL) {
 		Stop();
 		CloseHandle(cancelEvent);
 	}
-	if (iocpHandle != NULL)
-		CloseHandle(iocpHandle);
 }
 
 bool sab::IocpListenerConnectionManager::Initialize()
@@ -66,12 +64,6 @@ bool sab::IocpListenerConnectionManager::Initialize()
 	if (cancelEvent == NULL)
 		return false;
 
-	iocpHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
-	if (iocpHandle == NULL)
-	{
-		CloseHandle(cancelEvent);
-		return false;
-	}
 	initialized = true;
 	return true;
 }
@@ -80,13 +72,19 @@ bool sab::IocpListenerConnectionManager::Start()
 {
 	if (!initialized)return false;
 	ResetEvent(cancelEvent);
+	iocpHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+	if (iocpHandle == NULL) {
+		LogError(L"cannot create completion port!");
+		return false;
+	}
 	try
 	{
 		iocpThread = std::thread([this]()
 			{
 				IocpThreadProc();
 			});
-	}catch(...)
+	}
+	catch (...)
 	{
 		return false;
 	}
@@ -97,23 +95,28 @@ void sab::IocpListenerConnectionManager::Stop()
 {
 	if (!initialized)return;
 	SetEvent(cancelEvent);
+	if (iocpHandle) {
+		CloseHandle(iocpHandle);
+		iocpHandle = NULL;
+	}
 	if (iocpThread.joinable())
 		iocpThread.join();
 }
 
 bool sab::IocpListenerConnectionManager::DelegateConnection(
-	HANDLE connection, 
-	std::shared_ptr<ProtocolListenerBase> listener, 
+	HANDLE connection,
+	std::shared_ptr<ProtocolListenerBase> listener,
 	std::shared_ptr<ListenerConnectionData> data)
 {
 	auto context = std::make_shared<IoContext>();
-	
-	if(!CreateIoCompletionPort(connection, iocpHandle,
+
+	if (!CreateIoCompletionPort(connection, iocpHandle,
 		reinterpret_cast<ULONG_PTR>(context.get()), 0))
 	{
 		LogDebug(L"cannot associate handle to completion port! ", LogLastError);
 		return false;
 	}
+	LogDebug(L"delegated connection to manager: ", connection);
 	context->handle = connection;
 	context->listener = listener;
 	context->listenerData = data;
@@ -147,7 +150,8 @@ void sab::IocpListenerConnectionManager::PostMessageReply(SshMessageEnvelope* me
 	context->DoneIo();
 	if (status) {
 		DoIoCompletion(context, true);
-	}else
+	}
+	else
 	{
 		context->Dispose();
 	}
@@ -175,6 +179,11 @@ void sab::IocpListenerConnectionManager::IocpThreadProc()
 			// error
 			if (GetLastError() == ERROR_BROKEN_PIPE) {
 				LogDebug(L"remote closed pipe.");
+			}
+			else if (GetLastError() == ERROR_ABANDONED_WAIT_0)
+			{
+				LogDebug(L"completion port closed.");
+				break;
 			}
 			else {
 				LogDebug(L"GetQueuedCompletionStatus failed! ", LogLastError);
