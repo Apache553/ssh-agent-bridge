@@ -16,6 +16,7 @@ sab::Win32NamedPipeListener::Win32NamedPipeListener(
 {
 	cancelEvent = CreateEventW(NULL, TRUE,
 		FALSE, NULL);
+	assert(cancelEvent != NULL);
 }
 
 void sab::Win32NamedPipeListener::Run()

@@ -5,6 +5,8 @@
 
 #include <cassert>
 
+#include <WinSock2.h>
+
 sab::IoContext::IoContext()
 	:handle(INVALID_HANDLE_VALUE), state(State::Initialized),
 	ioDataOffest(0), ioBufferOffest(0), ioNeedBytes(0),

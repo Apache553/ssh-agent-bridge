@@ -3,8 +3,10 @@
 #include "util.h"
 #include "protocol_client_pageant.h"
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <sddl.h>
+#include <WinSock2.h>
 
 sab::PageantClient::PageantClient()
 {
