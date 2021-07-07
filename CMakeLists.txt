@@ -8,13 +8,16 @@ SET(HEADERS
 	"protocol_listener_win32_namedpipe.h" 
 	"protocol_ssh_helper.h"
 	"log.h" 
-	"util.h")
+	"util.h" 
+	"protocol_client_base.h" 
+	"protocol_client_pageant.h")
 
 SET(SOURCES
 	"main.cpp"
 	"protocol_listener_win32_namedpipe.cpp"
 	"log.cpp" 
-	"util.cpp")
+	"util.cpp" 
+	"protocol_client_pageant.cpp")
 
 
 
