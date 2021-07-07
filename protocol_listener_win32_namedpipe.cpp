@@ -59,7 +59,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 		sddlStream.str().c_str(),
 		SDDL_REVISION_1,
 		&sa.lpSecurityDescriptor,
-		&sa.nLength))
+		NULL))
 	{
 		LogError(L"cannot convert sddl to security descriptor!");
 		return false;
@@ -86,6 +86,8 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 		return false;
 	}
 	auto iocpGuard = HandleGuard(iocpHandle, CloseHandle);
+
+	LogInfo(L"start listening on ", pipePath);
 
 	while (true)
 	{
@@ -117,7 +119,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 		switch (GetLastError())
 		{
 		case ERROR_IO_PENDING:
-			LogDebug(L"waiting for connection...");
+			LogDebug(L"there is no client connect yet. waiting...");
 			break;
 		case ERROR_PIPE_CONNECTED:
 			LogDebug(L"client connects before ConnectNamedPipe is called!");
@@ -133,13 +135,14 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 		if (waitResult == WAIT_OBJECT_0)
 		{
 			// Cancel message received
+			LogDebug(L"cancel requested! canceling...");
 			return true;
 		}
 		else if (waitResult == WAIT_OBJECT_0 + 1)
 		{
 			// connected
 			LogDebug(L"accepted new connection");
-			if(connectionManager->DelegateConnection(pipeHandle,
+			if (connectionManager->DelegateConnection(pipeHandle,
 				this->shared_from_this(), nullptr))
 			{
 				pipeGuard.release();

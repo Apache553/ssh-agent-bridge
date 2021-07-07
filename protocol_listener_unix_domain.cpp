@@ -142,10 +142,10 @@ bool sab::UnixDomainSocketListener::ListenLoop()
 		GENERIC_READ | GENERIC_WRITE,
 		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
 		NULL, OPEN_EXISTING,
-		FILE_FLAG_DELETE_ON_CLOSE | FILE_FLAG_OPEN_REPARSE_POINT, 
+		FILE_FLAG_DELETE_ON_CLOSE | FILE_FLAG_OPEN_REPARSE_POINT,
 		NULL);
 	auto socketFileGuard = HandleGuard(socketFileHandle, CloseHandle);
-	if(socketFileHandle==INVALID_HANDLE_VALUE)
+	if (socketFileHandle == INVALID_HANDLE_VALUE)
 	{
 		LogError(L"cannot set socket file close on exit! ", LogLastError);
 		socketFileGuard.release();
