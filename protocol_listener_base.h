@@ -34,17 +34,6 @@ namespace sab
 		/// <returns>true if cancel request present</returns>
 		virtual bool IsCancelled()const = 0;
 
-		/// <summary>
-		/// Post a reply message
-		/// </summary>
-		virtual void PostBackReply(SshMessageEnvelope* message, bool status) = 0;
-
-		/// <summary>
-		/// set callback when a message comes
-		/// </summary>
-		/// <param name="callback">the callback</param>
-		virtual void ImbueReceiveMessageCallback(std::function<void(SshMessageEnvelope*)>&& callback);
-
 		ProtocolListenerBase() = default;
 		ProtocolListenerBase(ProtocolListenerBase&&) = default;
 		ProtocolListenerBase(const ProtocolListenerBase&) = delete;

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <functional>
 
 namespace sab
 {
@@ -32,7 +33,9 @@ namespace sab
 		/// <summary>
 		/// custom data to identify transaction by source
 		/// </summary>
-		void* id;
+		std::weak_ptr<void> id;
+
+		std::function<void(SshMessageEnvelope*, bool)> replyCallback;
 	};
 
 	static constexpr size_t MAX_MESSAGE_SIZE = 256 * 1024;

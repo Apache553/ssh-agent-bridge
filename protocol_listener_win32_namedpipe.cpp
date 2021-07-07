@@ -9,12 +9,10 @@
 
 #include <sddl.h>
 
-#pragma comment(lib, "Ws2_32.lib")
-
 sab::Win32NamedPipeListener::Win32NamedPipeListener(
-	const std::wstring& pipePath
-)
-	:pipePath(pipePath)
+	const std::wstring& pipePath,
+	std::shared_ptr<IocpListenerConnectionManager> manager)
+	:pipePath(pipePath), connectionManager(manager)
 {
 	cancelEvent = CreateEventW(NULL, TRUE,
 		FALSE, NULL);
@@ -88,34 +86,27 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 	}
 	auto iocpGuard = HandleGuard(iocpHandle, CloseHandle);
 
-	// io completion thread
-	std::thread iocpThread([&]()
-		{
-			IocpThreadProc(iocpHandle);
-		});
-	iocpThread.detach();
-
 	while (true)
 	{
-		auto context = std::make_shared<PipeContext>();
 
-		context->pipeHandle = CreateNamedPipeW(
+		HANDLE pipeHandle = CreateNamedPipeW(
 			pipePath.c_str(),
 			PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
 			PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
 			PIPE_UNLIMITED_INSTANCES,
-			MAX_PIPE_BUFFER_SIZE,
-			MAX_PIPE_BUFFER_SIZE,
+			MAX_BUFFER_SIZE,
+			MAX_BUFFER_SIZE,
 			0,
 			&sa);
-		if (context->pipeHandle == INVALID_HANDLE_VALUE)
+		if (pipeHandle == INVALID_HANDLE_VALUE)
 		{
 			LogError(L"cannot create listener pipe! ", LogLastError);
 			Cancel();
 			return false;
 		}
+		auto pipeGuard = HandleGuard(pipeHandle, CloseHandle);
 
-		if (ConnectNamedPipe(context->pipeHandle, &overlapped) != FALSE)
+		if (ConnectNamedPipe(pipeHandle, &overlapped) != FALSE)
 		{
 			LogError(L"ConnectNamedPipe unexpectedly returned TRUE!");
 			Cancel();
@@ -137,8 +128,6 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 			return false;
 		}
 
-		context->pipeStatus = PipeContext::Status::Listening;
-
 		DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
 		if (waitResult == WAIT_OBJECT_0)
 		{
@@ -149,232 +138,11 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 		{
 			// connected
 			LogDebug(L"accepted new connection");
-
-			if (CreateIoCompletionPort(context->pipeHandle, iocpHandle,
-				reinterpret_cast<ULONG_PTR>(context.get()), 0) != iocpHandle)
+			if(connectionManager->DelegateConnection(pipeHandle,
+				this->shared_from_this(), nullptr))
 			{
-				LogDebug(L"cannot assign pipe to iocp");
-				continue;
+				pipeGuard.release();
 			}
-
-			std::list<std::shared_ptr<PipeContext>>::iterator iter;
-			{
-				std::lock_guard<std::mutex> lg(listMutex);
-				contextList.emplace_front(context);
-				iter = contextList.begin();
-			}
-			(*iter)->selfIterator = iter;
-			(*iter)->message.source = this->shared_from_this();
-
-			OnIoCompletion(iter->get(), true);
-		}
-	}
-}
-
-void sab::Win32NamedPipeListener::OnIoCompletion(PipeContext* context, bool noRealIo)
-{
-	BOOL result;
-	DWORD transferred = 0;
-	uint32_t beLength;
-	DWORD writeLength;
-	DWORD readLength;
-
-	if (!noRealIo && (GetOverlappedResult(context->pipeHandle, &context->overlapped,
-		&transferred, FALSE) == FALSE))
-	{
-		LogDebug(L"failed to get overlapped operation result!");
-		FinalizeContext(context);
-		return;
-	}
-	LogDebug(L"OnIoCompletion: ", static_cast<int>(context->pipeStatus));
-	switch (context->pipeStatus)
-	{
-	case PipeContext::Status::Listening:
-		context->pipeStatus = PipeContext::Status::ReadHeader;
-		context->needTransferBytes = HEADER_SIZE;
-		context->message.data.clear();
-
-		result = ReadFile(context->pipeHandle, context->buffer,
-			HEADER_SIZE, NULL, &context->overlapped);
-		if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
-		{
-			FinalizeContext(context);
-			return;
-		}
-		break;
-	case PipeContext::Status::ReadHeader:
-		context->pipeStatus = PipeContext::Status::ReadBody;
-		context->needTransferBytes -= transferred;
-
-		// Check transferred length
-		if (context->needTransferBytes != 0)
-		{
-			FinalizeContext(context);
-			return;
-		}
-
-		// tweak byte order
-		memcpy(&beLength, context->buffer, HEADER_SIZE);
-		context->message.length = ntohl(beLength);
-
-		if (context->message.length > MAX_MESSAGE_SIZE)
-		{
-			LogDebug(L"message too long: ", context->message.length);
-			FinalizeContext(context);
-			return;
-		}
-
-		context->needTransferBytes = context->message.length;
-
-		// Compute read length
-		readLength = min(MAX_PIPE_BUFFER_SIZE, context->needTransferBytes);
-
-		result = ReadFile(context->pipeHandle, context->buffer,
-			readLength, NULL, &context->overlapped);
-		if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
-		{
-			FinalizeContext(context);
-			return;
-		}
-		break;
-	case PipeContext::Status::ReadBody:
-		context->needTransferBytes -= transferred;
-		if (context->needTransferBytes < 0)
-		{
-			LogDebug(L"unexpectedly read too many data");
-			FinalizeContext(context);
-			return;
-		}
-
-		// append read data
-		context->message.data.insert(context->message.data.end(), context->buffer,
-			context->buffer + transferred);
-
-		if (context->needTransferBytes > 0)
-		{
-			// continue reading...
-			readLength = min(MAX_PIPE_BUFFER_SIZE, context->needTransferBytes);
-
-			result = ReadFile(context->pipeHandle, context->buffer,
-				readLength, NULL, &context->overlapped);
-			if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
-			{
-				FinalizeContext(context);
-				return;
-			}
-			break;
-		}
-		else
-		{
-			// finished read
-			context->pipeStatus = PipeContext::Status::WaitReply;
-			context->externalReference = true;
-			LogDebug(L"recv message: length=", context->message.length, L", type=0x",
-				std::hex, std::setfill(L'0'), std::setw(2), context->message.data[0]);
-			receiveCallback(&context->message);
-		}
-		break;
-	case PipeContext::Status::WaitReply:
-		context->pipeStatus = PipeContext::Status::Write;
-		LogDebug(L"send message: length=", context->message.length, L", type=0x",
-			std::hex, std::setfill(L'0'), std::setw(2), context->message.data[0]);
-		// reply filled into message member
-		beLength = htonl(context->message.length);
-		context->transferredBytes = -static_cast<int>(HEADER_SIZE);
-		context->needTransferBytes = static_cast<int>(context->message.data.size()) + HEADER_SIZE;
-
-		memcpy(context->buffer, &beLength, HEADER_SIZE);
-
-		writeLength = min(MAX_PIPE_BUFFER_SIZE, context->needTransferBytes);
-
-		memcpy(context->buffer + HEADER_SIZE, context->message.data.data(),
-			writeLength - HEADER_SIZE);
-
-		result = WriteFile(context->pipeHandle, context->buffer,
-			writeLength, NULL, &context->overlapped);
-		if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
-		{
-			FinalizeContext(context);
-			return;
-		}
-		break;
-	case PipeContext::Status::Write:
-		context->needTransferBytes -= transferred;
-		context->transferredBytes += transferred;
-		if (context->needTransferBytes > 0)
-		{
-			// continue write
-			writeLength = min(MAX_PIPE_BUFFER_SIZE, context->needTransferBytes);
-			memcpy(context->buffer,
-				context->message.data.data() + context->transferredBytes,
-				writeLength);
-			result = WriteFile(context->pipeHandle, context->buffer,
-				writeLength, NULL, &context->overlapped);
-			if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
-			{
-				FinalizeContext(context);
-				return;
-			}
-		}
-		else
-		{
-			// finished writing
-			// prepare for next message
-			context->pipeStatus = PipeContext::Status::Listening;
-			OnIoCompletion(context, true);
-		}
-		break;
-	default:
-		LogDebug("illegal status for pipe context!");
-		FinalizeContext(context);
-		return;
-	}
-}
-
-void sab::Win32NamedPipeListener::FinalizeContext(PipeContext* context)
-{
-	// make sure it can be deleted from list once
-	if (!context->disposed && !context->externalReference)
-	{
-		CloseHandle(context->pipeHandle);
-		context->pipeHandle = INVALID_HANDLE_VALUE;
-		// after this the context may be not valid anymore
-		{
-			std::lock_guard<std::mutex> lg(listMutex);
-			contextList.erase(context->selfIterator);
-		}
-	}
-	context->pipeStatus = PipeContext::Status::Destroyed;
-}
-
-void sab::Win32NamedPipeListener::IocpThreadProc(HANDLE iocpHandle)
-{
-	OVERLAPPED* overlapped;
-	DWORD bytes;
-	PipeContext* context;
-
-	while (!IsCancelled())
-	{
-		overlapped = nullptr;
-		context = nullptr;
-		if (GetQueuedCompletionStatus(iocpHandle, &bytes,
-			reinterpret_cast<PULONG_PTR>(&context), &overlapped, INFINITE) == FALSE)
-		{
-			// error
-			if (GetLastError() == ERROR_BROKEN_PIPE) {
-				LogDebug(L"remote closed pipe.");
-			}
-			else {
-				LogDebug(L"GetQueuedCompletionStatus failed! ", LogLastError);
-			}
-			if (context)
-			{
-				FinalizeContext(context);
-			}
-		}
-		else
-		{
-			OnIoCompletion(context);
 		}
 	}
 }
@@ -389,37 +157,13 @@ bool sab::Win32NamedPipeListener::IsCancelled() const
 	return WaitForSingleObject(cancelEvent, 0) == WAIT_OBJECT_0;
 }
 
-void sab::Win32NamedPipeListener::PostBackReply(SshMessageEnvelope* message, bool status)
+bool sab::Win32NamedPipeListener::DoHandshake(std::shared_ptr<IoContext> context, int transferred)
 {
-	PipeContext* context = reinterpret_cast<PipeContext*>(message->id);
-	context->externalReference = false;
-	if (status && context->pipeStatus != PipeContext::Status::Destroyed) {
-		OnIoCompletion(context, true);
-	}
-	else
-	{
-		FinalizeContext(context);
-	}
+	return true;
 }
 
 sab::Win32NamedPipeListener::~Win32NamedPipeListener()
 {
 	if (cancelEvent)
 		CloseHandle(cancelEvent);
-}
-
-sab::Win32NamedPipeListener::PipeContext::PipeContext()
-{
-	memset(&overlapped, 0, sizeof(OVERLAPPED));
-	pipeHandle = INVALID_HANDLE_VALUE;
-	pipeStatus = Status::Initialized;
-	externalReference = false;
-	disposed = false;
-	message.id = reinterpret_cast<void*>(this);
-}
-
-sab::Win32NamedPipeListener::PipeContext::~PipeContext()
-{
-	if (pipeHandle != INVALID_HANDLE_VALUE)
-		CloseHandle(pipeHandle);
 }
