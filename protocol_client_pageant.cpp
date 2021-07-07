@@ -40,28 +40,29 @@ bool sab::PageantClient::SendSshMessage(SshMessageEnvelope* message)
 	memset(&sa, 0, sizeof(sa));
 	sa.nLength = sizeof(SECURITY_ATTRIBUTES);
 
-	std::unique_ptr<char[]> sdBuffer(new char[SECURITY_DESCRIPTOR_MIN_LENGTH]);
-	PSECURITY_DESCRIPTOR sd = reinterpret_cast<PSECURITY_DESCRIPTOR>(sdBuffer.get());
-	if (!InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION))
+	std::wostringstream sddlStream;
+	PSECURITY_DESCRIPTOR sd;
+	std::wstring sid = GetCurrentUserSidString();
+
+	if (sid.empty())
 	{
-		LogDebug(L"cannot initialize security descriptor! ", LogLastError);
 		return false;
 	}
 
-	PSID sid;
-	if (!ConvertStringSidToSidW(GetCurrentUserSidString().c_str(), &sid))
+	// set owner
+	sddlStream << L"O:" << sid;
+
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+		sddlStream.str().c_str(),
+		SDDL_REVISION_1,
+		&sd,
+		NULL))
 	{
-		LogDebug(L"cannot convert sid! ", LogLastError);
+		LogError(L"cannot convert sddl to security descriptor!");
 		return false;
 	}
-	auto sidGuard = HandleGuard(sid, LocalFree);
-
-	if (!SetSecurityDescriptorOwner(sd, sid, FALSE))
-	{
-		LogDebug(L"cannot set security descriptor owner! ", LogLastError);
-		return false;
-	}
-
+	auto sdGuard = HandleGuard(sd, LocalFree);
+	
 	sa.lpSecurityDescriptor = sd;
 	sa.bInheritHandle = FALSE;
 
