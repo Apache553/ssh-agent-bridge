@@ -1,7 +1,9 @@
 
 #include "util.h"
+#include "log.h"
 
 #include <Windows.h>
+#include <sddl.h>
 
 std::wstring sab::FormatLastError()
 {
@@ -22,5 +24,43 @@ std::wstring sab::FormatLastError(int errorCode)
 	LocalFree(buffer);
 	while (ret.back() == L'\n' || ret.back() == L'\r')
 		ret.pop_back();
+	return ret;
+}
+
+
+std::wstring sab::GetCurrentUserSidString()
+{
+	HANDLE processToken = GetCurrentProcessToken();
+	TOKEN_USER* userTokenInfo;
+	DWORD bufferSize;
+	std::wstring ret;
+
+	if ((GetTokenInformation(processToken, TokenUser, nullptr,
+		0, &bufferSize) == 0) && (GetLastError() == ERROR_INSUFFICIENT_BUFFER))
+	{
+		std::unique_ptr<char[]> buffer(new char[bufferSize]);
+		if (GetTokenInformation(processToken, TokenUser, buffer.get()
+			, bufferSize, &bufferSize) != 0) {
+			wchar_t* sidString;
+			userTokenInfo = reinterpret_cast<TOKEN_USER*>(buffer.get());
+			if (ConvertSidToStringSidW(userTokenInfo->User.Sid, &sidString) != 0)
+			{
+				ret = sidString;
+				LocalFree(sidString);
+			}
+			else
+			{
+				LogError(L"cannot convert sid to string! ", LogLastError);
+			}
+		}
+		else
+		{
+			LogError(L"cannot get current user sid! ", LogLastError);
+		}
+	}
+	else
+	{
+		LogError(L"cannot get current user sid buffer length! ", LogLastError);
+	}
 	return ret;
 }

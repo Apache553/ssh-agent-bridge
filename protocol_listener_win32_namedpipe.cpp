@@ -11,43 +11,6 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 
-static std::wstring GetCurrentUserSid()
-{
-	HANDLE processToken = GetCurrentProcessToken();
-	TOKEN_USER* userTokenInfo;
-	DWORD bufferSize;
-	std::wstring ret;
-
-	if ((GetTokenInformation(processToken, TokenUser, nullptr,
-		0, &bufferSize) == 0) && (GetLastError() == ERROR_INSUFFICIENT_BUFFER))
-	{
-		std::unique_ptr<char[]> buffer(new char[bufferSize]);
-		if (GetTokenInformation(processToken, TokenUser, buffer.get()
-			, bufferSize, &bufferSize) != 0) {
-			wchar_t* sidString;
-			userTokenInfo = reinterpret_cast<TOKEN_USER*>(buffer.get());
-			if (ConvertSidToStringSidW(userTokenInfo->User.Sid, &sidString) != 0)
-			{
-				ret = sidString;
-				LocalFree(sidString);
-			}
-			else
-			{
-				LogError(L"cannot convert sid to string! ", LogLastError);
-			}
-		}
-		else
-		{
-			LogError(L"cannot get current user sid! ", LogLastError);
-		}
-	}
-	else
-	{
-		LogError(L"cannot get current user sid buffer length! ", LogLastError);
-	}
-	return ret;
-}
-
 sab::Win32NamedPipeListener::Win32NamedPipeListener(
 	const std::wstring& pipePath
 )
@@ -79,7 +42,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 	OVERLAPPED overlapped;
 	SECURITY_ATTRIBUTES sa;
 	std::wostringstream sddlStream;
-	std::wstring sid = GetCurrentUserSid();
+	std::wstring sid = GetCurrentUserSidString();
 
 	if (sid.empty())
 	{
@@ -229,6 +192,7 @@ void sab::Win32NamedPipeListener::OnIoCompletion(PipeContext* context, bool noRe
 	case PipeContext::Status::Listening:
 		context->pipeStatus = PipeContext::Status::ReadHeader;
 		context->needTransferBytes = HEADER_SIZE;
+		context->message.data.clear();
 
 		result = ReadFile(context->pipeHandle, context->buffer,
 			HEADER_SIZE, NULL, &context->overlapped);
@@ -303,15 +267,17 @@ void sab::Win32NamedPipeListener::OnIoCompletion(PipeContext* context, bool noRe
 		else
 		{
 			// finished read
-			// TODO: handle message enqueue here
+			context->pipeStatus = PipeContext::Status::WaitReply;
 			context->externalReference = true;
-			LogDebug(L"read finished.");
-			context->externalReference = false;
-			FinalizeContext(context);
+			LogDebug(L"recv message: length=", context->message.length, L", type=0x",
+				std::hex, std::setfill(L'0'), std::setw(2), context->message.data[0]);
+			receiveCallback(&context->message);
 		}
 		break;
 	case PipeContext::Status::WaitReply:
 		context->pipeStatus = PipeContext::Status::Write;
+		LogDebug(L"send message: length=", context->message.length, L", type=0x",
+			std::hex, std::setfill(L'0'), std::setw(2), context->message.data[0]);
 		// reply filled into message member
 		beLength = htonl(context->message.length);
 		context->transferredBytes = -static_cast<int>(HEADER_SIZE);
@@ -395,7 +361,12 @@ void sab::Win32NamedPipeListener::IocpThreadProc(HANDLE iocpHandle)
 			reinterpret_cast<PULONG_PTR>(&context), &overlapped, INFINITE) == FALSE)
 		{
 			// error
-			LogDebug(L"GetQueuedCompletionStatus failed! ", LogLastError);
+			if (GetLastError() == ERROR_BROKEN_PIPE) {
+				LogDebug(L"remote closed pipe.");
+			}
+			else {
+				LogDebug(L"GetQueuedCompletionStatus failed! ", LogLastError);
+			}
 			if (context)
 			{
 				FinalizeContext(context);

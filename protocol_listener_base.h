@@ -4,6 +4,7 @@
 #include "protocol_ssh_helper.h"
 
 #include <memory>
+#include <functional>
 
 namespace sab
 {
@@ -14,6 +15,8 @@ namespace sab
 	/// </summary>
 	class ProtocolListenerBase :public std::enable_shared_from_this<ProtocolListenerBase>
 	{
+	protected:
+		std::function<void(SshMessageEnvelope*)> receiveCallback;
 	public:
 		/// <summary>
 		/// Run the listener, this method will be called in a standalone thread.
@@ -35,6 +38,12 @@ namespace sab
 		/// Post a reply message
 		/// </summary>
 		virtual void PostBackReply(SshMessageEnvelope* message, bool status) = 0;
+
+		/// <summary>
+		/// set callback when a message comes
+		/// </summary>
+		/// <param name="callback">the callback</param>
+		virtual void ImbueReceiveMessageCallback(std::function<void(SshMessageEnvelope*)>&& callback);
 
 		ProtocolListenerBase() = default;
 		ProtocolListenerBase(ProtocolListenerBase&&) = default;

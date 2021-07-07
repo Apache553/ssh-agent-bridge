@@ -9,7 +9,7 @@ namespace sab
 	{
 	public:
 		static constexpr size_t MAX_PAGEANT_MESSAGE_SIZE = 8192;
-		static constexpr int AGENT_COPYDATA_ID = 0x804e50ba;
+		static constexpr unsigned int AGENT_COPYDATA_ID = 0x804e50ba;
 		
 		PageantClient();
 		~PageantClient();

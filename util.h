@@ -31,6 +31,8 @@ namespace sab
 	
 	std::wstring FormatLastError();
 	std::wstring FormatLastError(int errorCode);
+
+	std::wstring GetCurrentUserSidString();
 	
 }
 

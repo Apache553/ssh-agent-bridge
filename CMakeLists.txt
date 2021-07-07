@@ -14,6 +14,7 @@ SET(HEADERS
 
 SET(SOURCES
 	"main.cpp"
+	"protocol_listener_base.cpp"
 	"protocol_listener_win32_namedpipe.cpp"
 	"log.cpp" 
 	"util.cpp" 
