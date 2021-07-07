@@ -28,6 +28,8 @@ namespace sab
 
 		int allocatedConsole;
 
+		LogLevel outputLevel;
+
 		void WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 			const std::wstring& str)noexcept;
 
@@ -38,10 +40,14 @@ namespace sab
 		void WriteLog(LogLevel level, const wchar_t* file, int line,
 			Args... args)noexcept
 		{
-			std::wostringstream oss;
-			int helper[] = { 0,(oss << args,0)... };
-			WriteLogImpl(level, file, line, oss.str());
+			if (level >= outputLevel) {
+				std::wostringstream oss;
+				int helper[] = { 0,(oss << args,0)... };
+				WriteLogImpl(level, file, line, oss.str());
+			}
 		}
+
+		void SetLogOutputLevel(LogLevel level);
 
 		static Logger& GetInstance(bool createConsole = false)noexcept;
 	};

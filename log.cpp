@@ -37,10 +37,16 @@ void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 	oss << L"][" << std::this_thread::get_id();
 	oss << L"][" << TranslateLogLevel(level) << L"] ";
 	oss << file << L':' << line;
+	if (allocatedConsole)
 	{
 		std::lock_guard<std::mutex> lg(ioMutex);
 		std::fwprintf(stdoutStream, L"%s: %s\n", oss.str().c_str(), str.c_str());
 	}
+}
+
+void sab::Logger::SetLogOutputLevel(LogLevel level)
+{
+	outputLevel = level;
 }
 
 sab::Logger& sab::Logger::GetInstance(bool createConsole)noexcept
@@ -66,8 +72,8 @@ FILE* OpenHandleToFILE(HANDLE handle, const wchar_t* mode)noexcept
 		0,
 		FALSE,
 		DUPLICATE_SAME_ACCESS);
-	
-	
+
+
 	int fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle2), _O_TEXT);
 	FILE* file = _wfdopen(fd, mode);
 	std::setvbuf(file, nullptr, _IONBF, 0);
@@ -76,7 +82,7 @@ FILE* OpenHandleToFILE(HANDLE handle, const wchar_t* mode)noexcept
 
 sab::Logger::Logger(bool createConsole)noexcept
 	:stdinStream(nullptr), stdoutStream(nullptr), stderrStream(nullptr),
-	allocatedConsole(createConsole)
+	allocatedConsole(createConsole), outputLevel(Info)
 {
 	std::setlocale(LC_ALL, "");
 
