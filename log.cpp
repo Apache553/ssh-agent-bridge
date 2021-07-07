@@ -37,7 +37,10 @@ void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 	oss << L"][" << std::this_thread::get_id();
 	oss << L"][" << TranslateLogLevel(level) << L"] ";
 	oss << file << L':' << line;
-	std::fwprintf(stdoutStream, L"%s: %s\n", oss.str().c_str(), str.c_str());
+	{
+		std::lock_guard<std::mutex> lg(ioMutex);
+		std::fwprintf(stdoutStream, L"%s: %s\n", oss.str().c_str(), str.c_str());
+	}
 }
 
 sab::Logger& sab::Logger::GetInstance(bool createConsole)noexcept

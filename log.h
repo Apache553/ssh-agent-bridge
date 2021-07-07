@@ -3,7 +3,7 @@
 
 #include <cstdio>
 #include <sstream>
-
+#include <mutex>
 
 namespace sab
 {
@@ -23,6 +23,8 @@ namespace sab
 		FILE* stdinStream;
 		FILE* stdoutStream;
 		FILE* stderrStream;
+
+		std::mutex ioMutex;
 
 		int allocatedConsole;
 
