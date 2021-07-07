@@ -6,17 +6,19 @@ PROJECT(ssh-agent-bridge)
 SET(HEADERS
 	"protocol_listener_base.h" 
 	"protocol_listener_win32_namedpipe.h" 
+	"protocol_listener_unix_domain.h"
+	"protocol_listener_iocp_connection_manager.h"
 	"protocol_ssh_helper.h"
 	"log.h" 
 	"util.h" 
 	"protocol_client_base.h" 
-	"protocol_client_pageant.h" 
-	"protocol_listener_iocp_connection_manager.h")
+	"protocol_client_pageant.h")
 
 SET(SOURCES
 	"main.cpp"
 	"protocol_listener_base.cpp"
 	"protocol_listener_win32_namedpipe.cpp"
+	"protocol_listener_unix_domain.cpp"
 	"protocol_listener_iocp_connection_manager.cpp"
 	"log.cpp" 
 	"util.cpp" 
