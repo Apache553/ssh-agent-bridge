@@ -27,7 +27,7 @@ bool sab::PageantListener::Run()
 		LogError(L"cannot register window class! ", LogLastError);
 		return false;
 	}
-	auto classGuard = HandleGuard(static_cast<HANDLE>(0), [](HANDLE)
+	auto classGuard = HandleGuard(classHandle, [](auto)
 		{
 			UnregisterClassW(PAGEANT_CLASS_NAME,
 				reinterpret_cast<HINSTANCE>(GetModuleHandleW(nullptr)));

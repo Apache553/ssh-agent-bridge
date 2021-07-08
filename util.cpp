@@ -112,3 +112,18 @@ bool sab::CompareStringSid(const std::wstring& sid1, const std::wstring& sid2)
 
 	return EqualSid(pSid1, pSid2);
 }
+
+
+std::string sab::WideStringToUtf8String(const std::wstring& str)
+{
+	int len = WideCharToMultiByte(CP_UTF8, 0, str.c_str(), -1,
+		nullptr, 0, NULL, NULL);
+	if (len == 0)
+	{
+		return std::string();
+	}
+	std::unique_ptr<char[]> buffer(new char[len]);
+	WideCharToMultiByte(CP_UTF8, 0, str.c_str(), -1,
+		buffer.get(), len, NULL, NULL);
+	return std::string(buffer.get());
+}
