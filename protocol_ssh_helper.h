@@ -25,16 +25,11 @@ namespace sab
 		/// </summary>
 		std::vector<uint8_t> data;
 
-
 		/// <summary>
-		/// the source listener of the message, currently UNUSED
+		/// store the callback used when sending reply.
+		/// if stored a lambda, it must not contain a shared_ptr to itself!!!
+		/// or memory leak will occur
 		/// </summary>
-		std::shared_ptr<ProtocolListenerBase> source;
-		/// <summary>
-		/// custom data to identify transaction by source
-		/// </summary>
-		std::weak_ptr<void> id;
-
 		std::function<void(SshMessageEnvelope*, bool)> replyCallback;
 	};
 

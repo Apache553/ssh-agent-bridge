@@ -34,7 +34,7 @@ namespace sab
 		mutex_type msgMutex;
 		condition_variable_type msgCondition;
 
-		std::function<void(SshMessageEnvelope*)> receiveCallback;
+		std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)> receiveCallback;
 
 	public:
 		PageantListener();
@@ -47,7 +47,7 @@ namespace sab
 
 		~PageantListener()override;
 
-		void SetEmitMessageCallback(std::function<void(SshMessageEnvelope*)>&& callback);
+		void SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback);
 	private:
 		static LRESULT WINAPI PageantWindowProcedure(HWND, UINT, WPARAM, LPARAM);
 

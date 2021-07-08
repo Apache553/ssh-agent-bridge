@@ -123,11 +123,15 @@ bool sab::IocpListenerConnectionManager::DelegateConnection(
 	context->state = IoContext::State::Handshake;
 
 	context->owner = shared_from_this();
-	context->message.replyCallback = [this](SshMessageEnvelope* message, bool status)
+
+	std::weak_ptr<IoContext> weakContext(context);
+	context->message.replyCallback = [this, weakContext](SshMessageEnvelope* message, bool status)
 	{
-		PostMessageReply(message, status);
+		auto strongContext = weakContext.lock();
+		if (strongContext == nullptr)
+			return; // context destroyed
+		PostMessageReply(strongContext, message, status);
 	};
-	context->message.id = std::static_pointer_cast<void>(context);
 
 	{
 		std::lock_guard<std::mutex> lg(listMutex);
@@ -138,23 +142,9 @@ bool sab::IocpListenerConnectionManager::DelegateConnection(
 	return true;
 }
 
-void sab::IocpListenerConnectionManager::SetEmitMessageCallback(std::function<void(SshMessageEnvelope*)>&& callback)
+void sab::IocpListenerConnectionManager::SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback)
 {
 	receiveCallback = callback;
-}
-
-void sab::IocpListenerConnectionManager::PostMessageReply(SshMessageEnvelope* message, bool status)
-{
-	std::shared_ptr<IoContext> context = std::static_pointer_cast<IoContext>(message->id.lock());
-	if (context == nullptr)return;
-	context->DoneIo();
-	if (status) {
-		DoIoCompletion(context, true);
-	}
-	else
-	{
-		context->Dispose();
-	}
 }
 
 void sab::IocpListenerConnectionManager::RemoveContext(IoContext* context)
@@ -309,10 +299,9 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 		{
 			// finished read
 			context->state = IoContext::State::WaitReply;
-			context->PrepareIo();
 			LogDebug(L"recv message: length=", context->message.length, L", type=0x",
 				std::hex, std::setfill(L'0'), std::setw(2), context->message.data[0]);
-			receiveCallback(&context->message);
+			receiveCallback(&context->message, context);
 		}
 		break;
 	case IoContext::State::WaitReply:
@@ -375,6 +364,18 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 		LogDebug("illegal status for pipe context!");
 		context->Dispose();
 		return;
+	}
+}
+
+void sab::IocpListenerConnectionManager::PostMessageReply(std::shared_ptr<void> genericContext, SshMessageEnvelope* message, bool status)
+{
+	std::shared_ptr<IoContext> context = std::static_pointer_cast<IoContext>(genericContext);
+	if (status) {
+		DoIoCompletion(context, true);
+	}
+	else
+	{
+		context->Dispose();
 	}
 }
 

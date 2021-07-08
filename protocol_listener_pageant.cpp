@@ -9,7 +9,7 @@
 #include <WinSock2.h>
 
 sab::PageantListener::PageantListener()
-	:windowHandle(NULL), cancelFlag(false)
+	:windowHandle(NULL), cancelFlag(false), messageOnAir(false), messageStatus(false)
 {
 }
 
@@ -112,7 +112,7 @@ sab::PageantListener::~PageantListener()
 	}
 }
 
-void sab::PageantListener::SetEmitMessageCallback(std::function<void(SshMessageEnvelope*)>&& callback)
+void sab::PageantListener::SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback)
 {
 	receiveCallback = callback;
 }
@@ -182,30 +182,33 @@ int sab::PageantListener::ProcessRequest(COPYDATASTRUCT* cds)
 	char* charMem = static_cast<char*>(mem);
 
 	// process actual request
-	SshMessageEnvelope message;
+	std::shared_ptr<SshMessageEnvelope> message = std::make_shared<SshMessageEnvelope>();
+	std::weak_ptr<SshMessageEnvelope> weakMessage(message);
 	uint32_t beLength;
 	memcpy(&beLength, charMem, HEADER_SIZE);
-	message.replyCallback = [this](SshMessageEnvelope*, bool status)
+	message->replyCallback = [this,weakMessage](SshMessageEnvelope*, bool status)
 	{
+		if (weakMessage.lock() == nullptr)
+			return; // operation canceled
 		std::unique_lock<mutex_type> lg(msgMutex);
 		messageOnAir = false;
 		messageStatus = status;
 		msgCondition.notify_one();
 	};
-	message.length = ntohl(beLength);
-	message.data.clear();
-	message.data.insert(message.data.begin(), charMem + HEADER_SIZE,
-		charMem + HEADER_SIZE + message.length);
+	message->length = ntohl(beLength);
+	message->data.clear();
+	message->data.insert(message->data.begin(), charMem + HEADER_SIZE,
+		charMem + HEADER_SIZE + message->length);
 
-	LogDebug(L"recv message: length=", message.length, L", type=0x",
-		std::hex, std::setfill(L'0'), std::setw(2), message.data[0]);
-	
+	LogDebug(L"recv message: length=", message->length, L", type=0x",
+		std::hex, std::setfill(L'0'), std::setw(2), message->data[0]);
+
 	{
 		std::unique_lock<mutex_type> lg(msgMutex);
 		if (cancelFlag)return false;
 		assert(messageOnAir != true);
 		messageOnAir = true;
-		receiveCallback(&message);
+		receiveCallback(message.get(), message);
 		msgCondition.wait(lg, [&]()
 			{
 				return messageOnAir == false;
@@ -218,18 +221,18 @@ int sab::PageantListener::ProcessRequest(COPYDATASTRUCT* cds)
 		return false;
 	}
 
-	LogDebug(L"send message: length=", message.length, L", type=0x",
-		std::hex, std::setfill(L'0'), std::setw(2), message.data[0]);
-	
-	if (message.length + HEADER_SIZE > MAX_PAGEANT_MESSAGE_SIZE)
+	LogDebug(L"send message: length=", message->length, L", type=0x",
+		std::hex, std::setfill(L'0'), std::setw(2), message->data[0]);
+
+	if (message->length + HEADER_SIZE > MAX_PAGEANT_MESSAGE_SIZE)
 	{
 		LogError(L"message too long!");
 		return false;
 	}
 
-	beLength = htonl(message.length);
+	beLength = htonl(message->length);
 	memcpy(charMem, &beLength, HEADER_SIZE);
-	memcpy(charMem + HEADER_SIZE, message.data.data(), message.data.size());
+	memcpy(charMem + HEADER_SIZE, message->data.data(), message->data.size());
 
 	return true;
 }

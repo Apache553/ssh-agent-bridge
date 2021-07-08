@@ -17,7 +17,7 @@
 namespace sab
 {
 	static constexpr size_t MAX_BUFFER_SIZE = 4 * 1024;
-	
+
 	class IocpListenerConnectionManager;
 
 	class ListenerConnectionData
@@ -48,12 +48,12 @@ namespace sab
 			/// connection was added to manager, waiting to do handshake
 			/// </summary>
 			Handshake,
-			
+
 			/// <summary>
 			/// ready for next message
 			/// </summary>
 			Ready,
-			
+
 			/// <summary>
 			/// reading header
 			/// </summary>
@@ -167,11 +167,11 @@ namespace sab
 		void Dispose();
 
 		/// <summary>
-		/// called before any io or wait reply
+		/// called before any io
 		/// </summary>
 		void PrepareIo();
 		/// <summary>
-		/// called after io completes or get reply
+		/// called after io completes
 		/// </summary>
 		void DoneIo();
 	};
@@ -213,7 +213,7 @@ namespace sab
 		/// <summary>
 		/// callback to emit a message
 		/// </summary>
-		std::function<void(SshMessageEnvelope*)> receiveCallback;
+		std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)> receiveCallback;
 	public:
 		IocpListenerConnectionManager();
 		IocpListenerConnectionManager(const IocpListenerConnectionManager&) = delete;
@@ -256,14 +256,8 @@ namespace sab
 		/// set message handler when received a message
 		/// </summary>
 		/// <param name="callback">the callback function</param>
-		void SetEmitMessageCallback(std::function<void(SshMessageEnvelope*)>&& callback);
+		void SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback);
 
-		/// <summary>
-		/// post the reply of a message
-		/// </summary>
-		/// <param name="message">the message</param>
-		/// <param name="status">indicate whether the reply was successfully put into 'message'</param>
-		void PostMessageReply(SshMessageEnvelope* message, bool status);
 	private:
 		/// <summary>
 		/// remove context from context list
@@ -282,6 +276,15 @@ namespace sab
 		/// <param name="context">the context</param>
 		/// <param name="noRealIo">set to true to not get completion status</param>
 		void DoIoCompletion(std::shared_ptr<IoContext> context, bool noRealIo);
+
+		/// <summary>
+		/// Helper function for callback
+		/// </summary>
+		/// <param name="weakContext">weak_ptr of IoContext</param>
+		/// <param name="message">the message</param>
+		/// <param name="status">operation status</param>
+		void PostMessageReply(std::shared_ptr<void> genericContext,
+			SshMessageEnvelope* message, bool status);
 
 		/// <summary>
 		/// make IoContext our friend
