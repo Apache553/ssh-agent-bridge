@@ -14,6 +14,8 @@ SET(HEADERS
 	"util.h" 
 	"protocol_client_base.h" 
 	"protocol_client_pageant.h"
+	"protocol_client_win32_namedpipe.h" 
+	"message_dispatcher.h"
 	)
 
 SET(SOURCES
@@ -26,6 +28,8 @@ SET(SOURCES
 	"log.cpp" 
 	"util.cpp" 
 	"protocol_client_pageant.cpp"
+	"protocol_client_win32_namedpipe.cpp"
+	"message_dispatcher.cpp"
 	)
 
 ADD_EXECUTABLE(ssh-agent-bridge WIN32 ${SOURCES} ${HEADERS})
