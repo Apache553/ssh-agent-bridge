@@ -16,10 +16,10 @@ namespace sab
 
 		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
 	public:
-		UnixDomainSocketListener(const std::wstring& socketAddress,
+		UnixDomainSocketListener(const std::wstring& socketPath,
 			std::shared_ptr<IocpListenerConnectionManager> manager);
 
-		void Run()override;
+		bool Run()override;
 
 		void Cancel()override;
 

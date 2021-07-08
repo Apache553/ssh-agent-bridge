@@ -19,7 +19,7 @@ sab::Win32NamedPipeListener::Win32NamedPipeListener(
 	assert(cancelEvent != NULL);
 }
 
-void sab::Win32NamedPipeListener::Run()
+bool sab::Win32NamedPipeListener::Run()
 {
 	bool status = ListenLoop();
 	if (status)
@@ -30,6 +30,7 @@ void sab::Win32NamedPipeListener::Run()
 	{
 		LogInfo(L"Win32NamedPipeListener stopped unexpectedly.");
 	}
+	return status;
 }
 
 bool sab::Win32NamedPipeListener::ListenLoop()

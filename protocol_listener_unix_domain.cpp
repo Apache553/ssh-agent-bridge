@@ -33,7 +33,7 @@ sab::UnixDomainSocketListener::UnixDomainSocketListener(
 	assert(cancelEvent != NULL);
 }
 
-void sab::UnixDomainSocketListener::Run()
+bool sab::UnixDomainSocketListener::Run()
 {
 	bool status = ListenLoop();
 	if (status)
@@ -44,6 +44,7 @@ void sab::UnixDomainSocketListener::Run()
 	{
 		LogInfo(L"UnixDomainSocketListener stopped unexpectedly.");
 	}
+	return status;
 }
 
 void sab::UnixDomainSocketListener::Cancel()

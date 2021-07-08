@@ -27,7 +27,7 @@ namespace sab
 
 
 		/// <summary>
-		/// the source listener of the message
+		/// the source listener of the message, currently UNUSED
 		/// </summary>
 		std::shared_ptr<ProtocolListenerBase> source;
 		/// <summary>

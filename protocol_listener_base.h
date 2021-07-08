@@ -21,7 +21,8 @@ namespace sab
 		/// <summary>
 		/// Run the listener, this method will be called in a standalone thread.
 		/// </summary>
-		virtual void Run() = 0;
+		/// <returns>true for success, else false</returns>
+		virtual bool Run() = 0;
 
 		/// <summary>
 		/// Cancel currently running listener, returns until listener is cancelled

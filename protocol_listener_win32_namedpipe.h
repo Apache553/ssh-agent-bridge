@@ -27,10 +27,10 @@ namespace sab
 
 		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
 	public:
-		Win32NamedPipeListener(const std::wstring& pipePath, 
+		Win32NamedPipeListener(const std::wstring& pipePath,
 			std::shared_ptr<IocpListenerConnectionManager> manager);
 
-		void Run()override;
+		bool Run()override;
 
 		void Cancel()override;
 
