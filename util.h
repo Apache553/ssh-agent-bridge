@@ -6,6 +6,9 @@
 #include <iomanip>
 #include <string>
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 namespace sab
 {
 
@@ -33,6 +36,8 @@ namespace sab
 	std::wstring FormatLastError(int errorCode);
 
 	std::wstring GetCurrentUserSidString();
+	std::wstring GetHandleOwnerSid(HANDLE handle);
+	bool CompareStringSid(const std::wstring& sid1, const std::wstring& sid2);
 	
 }
 
