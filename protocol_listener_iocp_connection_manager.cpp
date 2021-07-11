@@ -7,6 +7,32 @@
 
 #include <WinSock2.h>
 
+static constexpr const wchar_t* IoContextStateToString(sab::IoContext::State state)
+{
+	using State = sab::IoContext::State;
+	switch(state)
+	{
+	case State::Initialized:
+		return L"Initialized";
+	case State::Destroyed:
+		return L"Destroyed";
+	case State::Handshake:
+		return L"Handshake";
+	case State::ReadBody:
+		return L"ReadBody";
+	case State::ReadHeader:
+		return L"ReadHeader";
+	case State::WriteReply:
+		return L"WriteReply";
+	case State::WaitReply:
+		return L"WaitReply";
+	case State::Ready:
+		return L"Ready";
+	default:
+		return L"Unknown";
+	}
+}
+
 sab::IoContext::IoContext()
 	:handle(INVALID_HANDLE_VALUE), state(State::Initialized),
 	ioDataOffest(0), ioBufferOffest(0), ioNeedBytes(0),
@@ -208,7 +234,7 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 		context->Dispose();
 		return;
 	}
-	LogDebug(L"OnIoCompletion: ", static_cast<int>(context->state));
+	LogDebug(L"current state: ", IoContextStateToString(context->state));
 	switch (context->state)
 	{
 	case IoContext::State::Handshake:
@@ -361,7 +387,7 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 		}
 		break;
 	default:
-		LogDebug("illegal status for pipe context!");
+		LogDebug(L"illegal status for pipe context!");
 		context->Dispose();
 		return;
 	}
