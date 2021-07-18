@@ -53,7 +53,7 @@ int main(int argc, char** argv)
 			"Option:\n" <<
 			"\tlocal : socket path in wsl environment\n" <<
 			"\tremote: socket file under windows(wsl path style)\n" <<
-			"\tremoteAddress: windows host ip, deduced from default route if not specified"
+			"\tremoteAddress: windows host ip, deduced from default route if not specified\n"
 			"Example: " << argv[0] << " /tmp/ssh-agent.sock /mnt/c/Users/John/ssh-bridge.sock\n";
 		return 255;
 	}
