@@ -3,6 +3,7 @@
 
 #include "protocol_listener_base.h"
 #include "protocol_listener_iocp_connection_manager.h"
+#include "lxperm.h"
 
 namespace sab
 {
@@ -15,9 +16,17 @@ namespace sab
 		HANDLE cancelEvent = NULL;
 
 		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
+
+		bool permissionCheckFlag;
+		bool writeWslMetadataFlag;
+
+		LxPermissionInfo perm;
 	public:
 		UnixDomainSocketListener(const std::wstring& socketPath,
-			std::shared_ptr<IocpListenerConnectionManager> manager);
+			std::shared_ptr<IocpListenerConnectionManager> manager,
+			bool permissionCheckFlag,
+			bool writeWslMetadataFlag,
+			const LxPermissionInfo& perm);
 
 		bool Run()override;
 

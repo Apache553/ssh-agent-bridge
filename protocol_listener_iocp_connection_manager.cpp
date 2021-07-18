@@ -10,7 +10,7 @@
 static constexpr const wchar_t* IoContextStateToString(sab::IoContext::State state)
 {
 	using State = sab::IoContext::State;
-	switch(state)
+	switch (state)
 	{
 	case State::Initialized:
 		return L"Initialized";
@@ -51,7 +51,13 @@ void sab::IoContext::Dispose()
 {
 	if (state != State::Destroyed) {
 		LogDebug(L"terminating connection: ", handle);
-		CloseHandle(handle);
+		if (isSocket) {
+			closesocket(reinterpret_cast<SOCKET>(handle));
+		}
+		else
+		{
+			CloseHandle(handle);
+		}
 		handle = INVALID_HANDLE_VALUE;
 	}
 	state = State::Destroyed;
@@ -132,7 +138,8 @@ void sab::IocpListenerConnectionManager::Stop()
 bool sab::IocpListenerConnectionManager::DelegateConnection(
 	HANDLE connection,
 	std::shared_ptr<ProtocolListenerBase> listener,
-	std::shared_ptr<ListenerConnectionData> data)
+	std::shared_ptr<ListenerConnectionData> data,
+	bool isSocket)
 {
 	auto context = std::make_shared<IoContext>();
 
@@ -146,6 +153,7 @@ bool sab::IocpListenerConnectionManager::DelegateConnection(
 	context->handle = connection;
 	context->listener = listener;
 	context->listenerData = data;
+	context->isSocket = isSocket;
 	context->state = IoContext::State::Handshake;
 
 	context->owner = shared_from_this();
@@ -185,6 +193,8 @@ void sab::IocpListenerConnectionManager::IocpThreadProc()
 	DWORD bytes;
 	IoContext* context;
 
+	LogDebug(L"started iocp thread");
+	
 	while (WaitForSingleObject(cancelEvent, 0) != WAIT_OBJECT_0)
 	{
 		overlapped = nullptr;

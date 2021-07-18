@@ -8,13 +8,18 @@
 
 #include <WinSock2.h>
 
-sab::PageantListener::PageantListener()
-	: cancelFlag(false), windowHandle(NULL), messageOnAir(false), messageStatus(false)
+sab::PageantListener::PageantListener(bool permissionCheckFlag, bool allowNonElevatedAccessFlag)
+	: cancelFlag(false), windowHandle(NULL), messageOnAir(false), messageStatus(false),
+	permissionCheckFlag(permissionCheckFlag), allowNonElevatedAccessFlag(allowNonElevatedAccessFlag)
 {
 }
 
 bool sab::PageantListener::Run()
 {
+	auto exitMsg = HandleGuard(0, [](int)
+		{
+			LogInfo(L"PageantListener stopped unexpectedly.");
+		});
 	WNDCLASSW windowClass;
 	ATOM classHandle;
 	memset(&windowClass, 0, sizeof(WNDCLASS));
@@ -60,11 +65,15 @@ bool sab::PageantListener::Run()
 		return false;
 	}
 
+	if (allowNonElevatedAccessFlag)
+	{
+		ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD);
+	}
+
 	// message loop
 	MSG message;
 	BOOL status;
-	HWND localWindowHandle = windowHandle;
-	while ((status = GetMessageW(&message, localWindowHandle, 0, 0)) != 0)
+	while ((status = GetMessageW(&message, NULL, 0, 0)) != 0)
 	{
 		if (status == -1)
 		{
@@ -73,15 +82,18 @@ bool sab::PageantListener::Run()
 		}
 		else
 		{
-			// TranslateMessage(&message);
+			TranslateMessage(&message);
 			DispatchMessageW(&message);
 		}
 	}
+	exitMsg.release();
+	LogInfo(L"PageantListener stopped gracefully.");
 	return true;
 }
 
 void sab::PageantListener::Cancel()
 {
+	LogDebug(L"cancel requested! canceling...");
 	{
 		std::unique_lock<mutex_type> lg(msgMutex);
 		messageOnAir = false;
@@ -90,7 +102,7 @@ void sab::PageantListener::Cancel()
 		msgCondition.notify_one();
 	}
 	if (windowHandle != NULL) {
-		SendMessageW(windowHandle, WM_CLOSE, NULL, NULL);
+		PostMessageW(windowHandle, WM_CLOSE, NULL, NULL);
 		windowHandle = NULL;
 	}
 }
@@ -153,17 +165,19 @@ int sab::PageantListener::ProcessRequest(COPYDATASTRUCT* cds)
 	}
 	auto mapGuard = HandleGuard(fileMap, CloseHandle);
 
-	auto mapOwner = GetHandleOwnerSid(fileMap);
-	auto acceptedOwner1 = GetCurrentUserSidString();
-	auto acceptedOwner2 = GetHandleOwnerSid(GetCurrentProcess());
+	if (permissionCheckFlag) {
+		auto mapOwner = GetHandleOwnerSid(fileMap);
+		auto acceptedOwner1 = GetCurrentUserSidString();
+		auto acceptedOwner2 = GetHandleOwnerSid(GetCurrentProcess());
 
-	LogDebug(L"file mapping owner: ", mapOwner);
+		LogDebug(L"file mapping owner: ", mapOwner);
 
-	if (!CompareStringSid(mapOwner, acceptedOwner1) &&
-		!CompareStringSid(mapOwner, acceptedOwner2))
-	{
-		LogError(L"unauthorized request!");
-		return false;
+		if (!CompareStringSid(mapOwner, acceptedOwner1) &&
+			!CompareStringSid(mapOwner, acceptedOwner2))
+		{
+			LogError(L"unauthorized request!");
+			return false;
+		}
 	}
 
 	void* mem = MapViewOfFile(fileMap, FILE_MAP_WRITE, 0, 0, 0);

@@ -9,6 +9,8 @@
 #include "protocol_listener_unix_domain.h"
 #include "protocol_client_pageant.h"
 #include "protocol_client_win32_namedpipe.h"
+#include "lxperm.h"
+#include "cmdline_option.h"
 
 #include <cassert>
 #include <sstream>
@@ -18,6 +20,42 @@
 
 // workaround Windows.h
 #undef max
+
+static bool GetLxPermissionInfo(const sab::IniSection& section, sab::LxPermissionInfo& perm)
+{
+	const wchar_t* fieldName;
+	try {
+		fieldName = L"metadata-uid";
+		auto str = sab::GetSectionProperty(section, fieldName);
+		if (!str.empty())
+			perm.uid = std::stoi(str, nullptr, 0);
+		fieldName = L"metadata-gid";
+		str = sab::GetSectionProperty(section, fieldName);
+		if (!str.empty())
+			perm.gid = std::stoi(str, nullptr, 0);
+		fieldName = L"metadata-mode";
+		str = sab::GetSectionProperty(section, fieldName);
+		if (!str.empty())
+			perm.mode = std::stoi(str, nullptr, 0);
+	}
+	catch (std::invalid_argument)
+	{
+		LogError(L"invalid value for ", fieldName);
+		return false;
+	}
+	catch (std::out_of_range)
+	{
+		LogError(L"value too large for ", fieldName);
+		return false;
+	}
+	return true;
+}
+
+static inline bool GetBoolProperty(const sab::IniSection& section, const std::wstring& name)
+{
+	auto str = sab::GetSectionProperty(section, name);
+	return str == L"true";
+}
 
 static std::vector<std::wstring> SplitString(const std::wstring& str, wchar_t delim = L' ')
 {
@@ -36,6 +74,7 @@ static std::vector<std::wstring> SplitString(const std::wstring& str, wchar_t de
 }
 
 sab::Application::Application()
+	:exitCode(0), isService(false)
 {
 	cancelEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
 	assert(cancelEvent != nullptr);
@@ -68,6 +107,20 @@ bool sab::Application::Initialize(const IniFile& config)
 		LogError(L"missing config [general].client");
 		return false;
 	}
+
+	Logger::LogLevel logLevel = Logger::LogLevel::Invalid;
+	auto loglevelStr = GetSectionProperty(*general, L"loglevel");
+	if (EqualStringIgnoreCase(loglevelStr, L"debug"))
+		logLevel = Logger::LogLevel::Debug;
+	else if (EqualStringIgnoreCase(loglevelStr, L"info"))
+		logLevel = Logger::LogLevel::Info;
+	else if (EqualStringIgnoreCase(loglevelStr, L"warn"))
+		logLevel = Logger::LogLevel::Warning;
+	else if (EqualStringIgnoreCase(loglevelStr, L"error"))
+		logLevel = Logger::LogLevel::Error;
+	if (logLevel != Logger::LogLevel::Invalid)
+		Logger::GetInstance().SetLogOutputLevel(logLevel);
+		
 
 	// validate
 	if (std::find(listenerNameList.begin(), listenerNameList.end(), clientName) != listenerNameList.end())
@@ -180,7 +233,7 @@ int sab::Application::Run()
 	{
 		l->Cancel();
 	}
-	for(auto& l:listenThreads)
+	for (auto& l : listenThreads)
 	{
 		if (l.joinable())
 			l.join();
@@ -199,7 +252,7 @@ int sab::Application::RunStub(bool isService, const std::wstring& configPath)
 	if (!isService)
 		return Run();
 
-	auto mainProc = [](DWORD, LPWSTR*) {
+	auto mainProc = [](DWORD argc, LPWSTR* argv) {
 		auto& t = Application::GetInstance();
 		if (!ServiceSupport::GetInstance().RegisterService(ServiceSupport::SERVICE_NAME,
 			ServiceControlHandler))
@@ -208,6 +261,7 @@ int sab::Application::RunStub(bool isService, const std::wstring& configPath)
 			t.exitCode = 1;
 			return;
 		}
+
 		t.exitCode = t.Run();
 		ServiceSupport::GetInstance().ReportStatus(SERVICE_STOPPED, t.exitCode);
 	};
@@ -264,10 +318,17 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupWsl2Listener(c
 		LogError(L"missing config [wsl2].socket-address");
 		return nullptr;
 	}
-	// TODO: handle permission check config
-	return std::make_shared<LibassuanSocketEmulationListener>(socketPath,
-		socketAddress, connectionManager);
 
+	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
+	bool writeWslMetadata = GetBoolProperty(*section, L"write-wsl-metadata");
+
+	LxPermissionInfo perm;
+	perm.mode = 0600;
+	if (writeWslMetadata && !GetLxPermissionInfo(*section, perm))
+		return nullptr;
+
+	return std::make_shared<LibassuanSocketEmulationListener>(socketPath,
+		socketAddress, connectionManager, enablePermissionCheck, writeWslMetadata, perm);
 }
 
 std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupNamedPipeListener(const IniFile& config)
@@ -283,14 +344,20 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupNamedPipeListe
 		LogError(L"missing config [namedpipe].namedpipe-path");
 		return nullptr;
 	}
-	// TODO: handle permission configs
-	return std::make_shared<Win32NamedPipeListener>(pipePath, connectionManager);
+	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
+
+	return std::make_shared<Win32NamedPipeListener>(pipePath, connectionManager, enablePermissionCheck);
 }
 
 std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupPageantListener(const IniFile& config)
 {
-	// TODO: handle permission configs
-	auto ptr = std::make_shared<PageantListener>();
+	const IniSection* section = GetSection(config, L"pageant");
+	if (section == nullptr)
+		return nullptr;
+
+	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
+	bool allowNonElevatedAccess = GetBoolProperty(*section, L"allow-non-elevated-access");
+	auto ptr = std::make_shared<PageantListener>(enablePermissionCheck, allowNonElevatedAccess);
 	ptr->SetEmitMessageCallback([&](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
 		{
 			dispatcher->PostRequest(msg, std::move(holdKey));
@@ -311,9 +378,17 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupUnixListener(c
 		LogError(L"missing config [unix].socket-path");
 		return nullptr;
 	}
-	// TODO: handle permission configs
 
-	return std::make_shared<UnixDomainSocketListener>(socketPath, connectionManager);
+	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
+	bool writeWslMetadata = GetBoolProperty(*section, L"write-wsl-metadata");
+
+	LxPermissionInfo perm;
+	perm.mode = 0700;
+	if (writeWslMetadata && !GetLxPermissionInfo(*section, perm))
+		return nullptr;
+
+	return std::make_shared<UnixDomainSocketListener>(socketPath, connectionManager,
+		enablePermissionCheck, writeWslMetadata, perm);
 }
 
 std::shared_ptr<sab::ProtocolClientBase> sab::Application::SetupPageantClient(const IniFile& config)
@@ -342,6 +417,7 @@ void __stdcall sab::Application::ServiceControlHandler(DWORD dwControl)
 	switch (dwControl)
 	{
 	case SERVICE_CONTROL_STOP:
+		ServiceSupport::GetInstance().ReportStatus(SERVICE_STOP_PENDING, 0, 3000);
 		Application::GetInstance().Cancel();
 		break;
 	}

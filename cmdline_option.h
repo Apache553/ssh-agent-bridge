@@ -13,7 +13,7 @@ namespace sab
 	{
 		bool isGood = false;
 		
-		Logger::LogLevel logLevel = Logger::LogLevel::Info;
+		Logger::LogLevel logLevel = Logger::LogLevel::Invalid;
 		bool isDebug = false;
 		bool isService = false;
 		bool isIntallService = false;

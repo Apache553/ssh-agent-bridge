@@ -2,6 +2,7 @@
 #include "log.h"
 #include "util.h"
 #include "protocol_listener_unix_domain.h"
+#include "lxperm.h"
 
 #include <cassert>
 
@@ -11,8 +12,14 @@
 
 sab::UnixDomainSocketListener::UnixDomainSocketListener(
 	const std::wstring& socketPath,
-	std::shared_ptr<IocpListenerConnectionManager> manager)
-	:socketPath(socketPath), connectionManager(manager)
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	bool permissionCheckFlag,
+	bool writeWslMetadataFlag,
+	const LxPermissionInfo& perm)
+	:socketPath(socketPath), connectionManager(manager),
+	permissionCheckFlag(permissionCheckFlag),
+	writeWslMetadataFlag(writeWslMetadataFlag),
+	perm(perm)
 {
 	cancelEvent = CreateEventW(NULL, TRUE,
 		FALSE, NULL);
@@ -103,6 +110,16 @@ bool sab::UnixDomainSocketListener::ListenLoop()
 	}
 	auto heGuard = HandleGuard(waitHandle[1], WSACloseEvent);
 
+	// always delete the socket file first
+	if (CheckFileExists(socketPath))
+	{
+		LogWarning(L"socket exists! deleting...");
+		if (DeleteFileW(socketPath.c_str()) == 0)
+		{
+			LogWarning(L"cannot delete the file! ", LogLastError);
+		}
+	}
+
 	listenSocket = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (listenSocket == INVALID_SOCKET)
 	{
@@ -124,23 +141,26 @@ bool sab::UnixDomainSocketListener::ListenLoop()
 		return false;
 	}
 
-	HANDLE socketFileHandle = CreateFileW(socketPath.c_str(),
-		GENERIC_READ | GENERIC_WRITE,
-		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-		NULL, OPEN_EXISTING,
-		FILE_FLAG_DELETE_ON_CLOSE | FILE_FLAG_OPEN_REPARSE_POINT,
-		NULL);
-	auto socketFileGuard = HandleGuard(socketFileHandle, CloseHandle);
-	if (socketFileHandle == INVALID_HANDLE_VALUE)
-	{
-		LogError(L"cannot set socket file close on exit! ", LogLastError);
-		socketFileGuard.release();
+	// automatic delete the socket file on exit
+	auto fileGuard = HandleGuard(socketPath, [](const std::wstring& path)
+		{
+			DeleteFileW(path.c_str());
+		});
+
+	if (permissionCheckFlag) {
+		if (SetFileSecurityW(socketPath.c_str(), DACL_SECURITY_INFORMATION, sd) == 0)
+		{
+			LogError(L"cannot set socket access permission! ", LogLastError);
+			return false;
+		}
 	}
 
-	if (SetFileSecurityW(socketPath.c_str(), DACL_SECURITY_INFORMATION, sd) == 0)
-	{
-		LogError(L"cannot set socket access permission! ", LogLastError);
-		return false;
+	if (writeWslMetadataFlag) {
+		if (!SetLxPermission(GetPathParentDirectory(socketPath), perm, false))
+		{
+			LogError(L"cannot set linux permission!");
+			return false;
+		}
 	}
 
 	result = listen(listenSocket, 8);
@@ -191,7 +211,7 @@ bool sab::UnixDomainSocketListener::ListenLoop()
 					if (!connectionManager->DelegateConnection(
 						reinterpret_cast<HANDLE>(acceptSocket),
 						this->shared_from_this(),
-						nullptr))
+						nullptr, true))
 					{
 						closesocket(acceptSocket);
 					}

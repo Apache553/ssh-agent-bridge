@@ -92,6 +92,11 @@ namespace sab
 		HANDLE handle;
 
 		/// <summary>
+		/// set to true if it is a socket
+		/// </summary>
+		bool isSocket;
+
+		/// <summary>
 		/// OVERLAPPED structure for iocp
 		/// </summary>
 		OVERLAPPED overlapped;
@@ -250,7 +255,8 @@ namespace sab
 		/// <returns>true for success, false for failure</returns>
 		bool DelegateConnection(HANDLE connection,
 			std::shared_ptr<ProtocolListenerBase> listener,
-			std::shared_ptr<ListenerConnectionData> data);
+			std::shared_ptr<ListenerConnectionData> data,
+			bool isSocket);
 
 		/// <summary>
 		/// set message handler when received a message

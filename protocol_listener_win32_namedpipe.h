@@ -26,9 +26,12 @@ namespace sab
 		HANDLE cancelEvent = NULL;
 
 		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
+
+		bool permissionCheckFlag;
 	public:
 		Win32NamedPipeListener(const std::wstring& pipePath,
-			std::shared_ptr<IocpListenerConnectionManager> manager);
+			std::shared_ptr<IocpListenerConnectionManager> manager,
+			bool permissionCheckFlag);
 
 		bool Run()override;
 

@@ -21,7 +21,8 @@ SET(HEADERS
 	"ini_parse.h" 
 	"application.h"
 	"cmdline_option.h"
-	"service_support.h")
+	"service_support.h" 
+	"lxperm.h")
 
 SET(SOURCES
 	"main.cpp"
@@ -40,7 +41,8 @@ SET(SOURCES
 	"ini_parse.cpp" 
 	"cmdline_option.cpp" 
 	"application.cpp" 
-	"service_support.cpp")
+	"service_support.cpp" 
+	"lxperm.cpp")
 
 ADD_EXECUTABLE(ssh-agent-bridge WIN32 ${SOURCES} ${HEADERS})
 TARGET_LINK_LIBRARIES(ssh-agent-bridge Ws2_32 Bcrypt)

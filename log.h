@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <sstream>
 #include <mutex>
+#include <fstream>
 
 namespace sab
 {
@@ -16,18 +17,26 @@ namespace sab
 			Debug = 0,
 			Info,
 			Warning,
-			Error
+			Error,
+			Invalid
 		};
 	private:
 		FILE* stdinStream;
 		FILE* stdoutStream;
 		FILE* stderrStream;
+		int allocatedConsole;
+		bool PrepareConsole();
+		void FreeConsole();
 
+		std::wofstream fileStream;
+		bool PrepareFileLog();
+		void FreeFileLog();
+		
 		std::mutex ioMutex;
 
-		int allocatedConsole;
-
 		LogLevel outputLevel;
+
+		bool debugOutput = false;
 
 		void WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 			const std::wstring& str)noexcept;
@@ -47,8 +56,9 @@ namespace sab
 		}
 
 		void SetLogOutputLevel(LogLevel level);
+		LogLevel GetLogOutputLevel()const { return outputLevel; }
 
-		static Logger& GetInstance(bool createConsole = false)noexcept;
+		static Logger& GetInstance(bool isDebug = false)noexcept;
 	};
 }
 

@@ -5,9 +5,6 @@
 #include "cmdline_option.h"
 #include "service_support.h"
 
-#include <cstdio>
-#include <clocale>
-#include <condition_variable>
 #include <cassert>
 
 #define WIN32_LEAN_AND_MEAN
@@ -17,7 +14,7 @@
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	PWSTR pCmdLine, int nCmdShow)
 {
-	//MessageBoxW(NULL, L"attach debugger", L"info", MB_OK);
+	// MessageBoxW(NULL, L"attach debugger", L"info", MB_OK);
 	sab::CommandLineOption options =
 		sab::ExtractCommandLineOption(
 			sab::SplitCommandLine(
@@ -28,6 +25,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	sab::Logger::GetInstance(options.isDebug);
 
+	if (options.logLevel == sab::Logger::LogLevel::Invalid)
+		options.logLevel = sab::Logger::LogLevel::Info;
 	sab::Logger::GetInstance().SetLogOutputLevel(options.logLevel);
 
 	if (options.isIntallService)

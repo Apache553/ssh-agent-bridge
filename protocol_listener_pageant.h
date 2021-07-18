@@ -25,7 +25,7 @@ namespace sab
 		using condition_variable_type = std::condition_variable;
 	private:
 		bool cancelFlag;
-		
+
 		HWND windowHandle;
 
 		bool messageOnAir;
@@ -36,8 +36,10 @@ namespace sab
 
 		std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)> receiveCallback;
 
+		bool permissionCheckFlag;
+		bool allowNonElevatedAccessFlag;
 	public:
-		PageantListener();
+		PageantListener(bool permissionCheckFlag, bool allowNonElevatedAccessFlag);
 
 		bool Run()override;
 

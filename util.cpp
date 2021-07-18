@@ -3,6 +3,7 @@
 #include "log.h"
 
 #include <memory>
+#include <cwctype>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -12,16 +13,16 @@
 std::wstring sab::FormatLastError()
 {
 	DWORD errorCode = GetLastError();
-	return FormatLastError(errorCode);
+	return FormatLastError(errorCode, NULL);
 }
 
-std::wstring sab::FormatLastError(int errorCode)
+std::wstring sab::FormatLastError(int errorCode, HMODULE moduleHandle)
 {
 	wchar_t* buffer = nullptr;
 	std::wstring ret;
 	DWORD len = FormatMessageW(
-		FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-		0, errorCode, 0,
+		FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | (moduleHandle ? FORMAT_MESSAGE_FROM_HMODULE : NULL),
+		moduleHandle, errorCode, 0,
 		reinterpret_cast<LPWSTR>(&buffer), 0, nullptr);
 	if (len == 0)return L"*Cannot Format Error Message*";
 	ret = buffer;
@@ -172,7 +173,12 @@ std::wstring sab::GetExecutablePath()
 
 std::wstring sab::GetExecutableDirectory()
 {
-	std::wstring ret = GetExecutablePath();
+	return GetPathParentDirectory(GetExecutablePath());
+}
+
+std::wstring sab::GetPathParentDirectory(const std::wstring& path)
+{
+	std::wstring ret = path;
 	while (!ret.empty() && (ret.back() != L'\\' && ret.back() != L'/'))
 		ret.pop_back();
 	if (!ret.empty())
@@ -182,7 +188,7 @@ std::wstring sab::GetExecutableDirectory()
 
 std::wstring sab::GetDefaultConfigPath()
 {
-	std::wstring defaultFile = ReplaceEnvironmentVariables(L"%USERPROFILE%\\ssh-agent-bridge.ini");
+	std::wstring defaultFile = ReplaceEnvironmentVariables(L"%USERPROFILE%\\ssh-agent-bridge\\ssh-agent-bridge.ini");
 	if (CheckFileExists(defaultFile))
 		return defaultFile;
 	defaultFile = GetExecutableDirectory() + L"\\ssh-agent-bridge.ini";
@@ -204,5 +210,17 @@ bool sab::CheckFileExists(const std::wstring& str)
 		FindClose(findHandle);
 		return true;
 	}
+}
+
+bool sab::EqualStringIgnoreCase(const std::wstring& a, const std::wstring& b)
+{
+	if (a.size() != b.size())
+		return false;
+	for (size_t i = 0; i < a.size(); ++i)
+	{
+		if (std::towlower(a[i]) != std::towlower(b[i]))
+			return false;
+	}
+	return true;
 }
 

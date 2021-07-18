@@ -1,19 +1,7 @@
 
 #include "cmdline_option.h"
+#include "util.h"
 
-#include <cwctype>
-
-static bool EqualStringIgnoreCase(const std::wstring& a, const std::wstring& b)
-{
-	if (a.size() != b.size())
-		return false;
-	for (size_t i = 0; i < a.size(); ++i)
-	{
-		if (std::towlower(a[i]) != std::towlower(b[i]))
-			return false;
-	}
-	return true;
-}
 
 sab::CommandLineOption sab::ExtractCommandLineOption(const std::vector<std::wstring>& args)
 {

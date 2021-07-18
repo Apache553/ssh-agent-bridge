@@ -54,7 +54,7 @@ namespace sab
 	}
 
 	std::wstring FormatLastError();
-	std::wstring FormatLastError(int errorCode);
+	std::wstring FormatLastError(int errorCode, HMODULE moduleHandle);
 
 	std::wstring GetCurrentUserSidString();
 	std::wstring GetHandleOwnerSid(HANDLE handle);
@@ -66,9 +66,13 @@ namespace sab
 
 	std::wstring GetExecutablePath();
 	std::wstring GetExecutableDirectory();
+	std::wstring GetPathParentDirectory(const std::wstring& path);
 	std::wstring GetDefaultConfigPath();
 
 	bool CheckFileExists(const std::wstring& str);
+
+	bool EqualStringIgnoreCase(const std::wstring& a, const std::wstring& b);
+
 
 }
 
@@ -76,4 +80,7 @@ namespace sab
 	std::hex, GetLastError(), L": ", sab::FormatLastError()
 
 #define LogWSALastError L"0x", std::setfill(L'0'), std::setw(8), std::right, \
-	std::hex, WSAGetLastError(), L": ", sab::FormatLastError(WSAGetLastError())
+	std::hex, WSAGetLastError(), L": ", sab::FormatLastError(WSAGetLastError(), NULL)
+
+#define LogNtStatus(x) L"0x", std::setfill(L'0'), std::setw(8), std::right, \
+	std::hex, (x), L": ", sab::FormatLastError(x, GetModuleHandleW(L"ntdll.dll"))

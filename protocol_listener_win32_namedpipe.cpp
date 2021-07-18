@@ -11,8 +11,10 @@
 
 sab::Win32NamedPipeListener::Win32NamedPipeListener(
 	const std::wstring& pipePath,
-	std::shared_ptr<IocpListenerConnectionManager> manager)
-	:pipePath(pipePath), connectionManager(manager)
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	bool permissionCheckFlag)
+	:pipePath(pipePath), connectionManager(manager),
+	permissionCheckFlag(permissionCheckFlag)
 {
 	cancelEvent = CreateEventW(NULL, TRUE,
 		FALSE, NULL);
@@ -101,7 +103,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 			MAX_BUFFER_SIZE,
 			MAX_BUFFER_SIZE,
 			0,
-			&sa);
+			(permissionCheckFlag ? &sa : NULL));
 		if (pipeHandle == INVALID_HANDLE_VALUE)
 		{
 			LogError(L"cannot create listener pipe! ", LogLastError);
@@ -144,7 +146,7 @@ bool sab::Win32NamedPipeListener::ListenLoop()
 			// connected
 			LogDebug(L"accepted new connection");
 			if (connectionManager->DelegateConnection(pipeHandle,
-				this->shared_from_this(), nullptr))
+				this->shared_from_this(), nullptr, false))
 			{
 				pipeGuard.release();
 			}

@@ -28,10 +28,16 @@ namespace sab
 sab::LibassuanSocketEmulationListener::LibassuanSocketEmulationListener(
 	const std::wstring& socketPath,
 	const std::wstring& listenAddress,
-	std::shared_ptr<IocpListenerConnectionManager> manager)
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	bool permissionCheckFlag,
+	bool writeWslMetadataFlag,
+	const LxPermissionInfo& perm)
 	:socketPath(socketPath),
 	listenAddress(listenAddress),
-	connectionManager(manager)
+	connectionManager(manager),
+	permissionCheckFlag(permissionCheckFlag),
+	writeWslMetadataFlag(writeWslMetadataFlag),
+	perm(perm)
 {
 	LogInfo(L"set socket file path: ", socketPath);
 	LogInfo(L"set listen address: ", listenAddress);
@@ -212,10 +218,21 @@ bool sab::LibassuanSocketEmulationListener::ListenLoop()
 		return false;
 	}
 
-	if (SetFileSecurityW(socketPath.c_str(), DACL_SECURITY_INFORMATION, sd) == 0)
+	if (permissionCheckFlag) {
+		if (SetFileSecurityW(socketPath.c_str(), DACL_SECURITY_INFORMATION, sd) == 0)
+		{
+			LogError(L"cannot set socket file permission! ", LogLastError);
+			return false;
+		}
+	}
+
+	if (writeWslMetadataFlag)
 	{
-		LogError(L"cannot set socket file permission! ", LogLastError);
-		return false;
+		if (!SetLxPermissionByHandle(socketFileHandle, perm))
+		{
+			LogError(L"cannot set linux permission!");
+			return false;
+		}
 	}
 
 	int portNumber = ntohs(socketAddress.sin_port);
@@ -287,7 +304,7 @@ bool sab::LibassuanSocketEmulationListener::ListenLoop()
 					if (!connectionManager->DelegateConnection(
 						reinterpret_cast<HANDLE>(acceptSocket),
 						this->shared_from_this(),
-						data))
+						data, true))
 					{
 						closesocket(acceptSocket);
 					}
