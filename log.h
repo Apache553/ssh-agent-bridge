@@ -11,13 +11,12 @@ namespace sab
 	class Logger
 	{
 	public:
-		enum LogLevel
+		enum class LogLevel
 		{
 			Debug = 0,
 			Info,
 			Warning,
-			Error,
-			Fatal
+			Error
 		};
 	private:
 		FILE* stdinStream;
@@ -57,21 +56,17 @@ namespace sab
 #define WSTR(x) WSTR_(x)
 
 #define LogDebug(...) \
-	sab::Logger::GetInstance().WriteLog( sab::Logger::Debug , \
+	sab::Logger::GetInstance().WriteLog( sab::Logger::LogLevel::Debug , \
 	WSTR( __FILE__ ) , __LINE__ , __VA_ARGS__ )
 
 #define LogInfo(...) \
-	sab::Logger::GetInstance().WriteLog( sab::Logger::Info , \
+	sab::Logger::GetInstance().WriteLog( sab::Logger::LogLevel::Info , \
 	WSTR( __FILE__ ) , __LINE__ , __VA_ARGS__ )
 
 #define LogWarning(...) \
-	sab::Logger::GetInstance().WriteLog( sab::Logger::Warning , \
+	sab::Logger::GetInstance().WriteLog( sab::Logger::LogLevel::Warning , \
 	WSTR( __FILE__ ) , __LINE__ , __VA_ARGS__ )
 
 #define LogError(...) \
-	sab::Logger::GetInstance().WriteLog( sab::Logger::Error , \
-	WSTR( __FILE__ ) , __LINE__ , __VA_ARGS__ )
-
-#define LogFatal(...) \
-	sab::Logger::GetInstance().WriteLog( sab::Logger::Fatal , \
+	sab::Logger::GetInstance().WriteLog( sab::Logger::LogLevel::Error , \
 	WSTR( __FILE__ ) , __LINE__ , __VA_ARGS__ )

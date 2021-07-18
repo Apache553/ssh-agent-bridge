@@ -2,6 +2,8 @@
 #include "util.h"
 #include "log.h"
 
+#include <memory>
+
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <AclAPI.h>
@@ -127,3 +129,80 @@ std::string sab::WideStringToUtf8String(const std::wstring& str)
 		buffer.get(), len, NULL, NULL);
 	return std::string(buffer.get());
 }
+
+std::wstring sab::ReplaceEnvironmentVariables(const std::wstring& str)
+{
+	DWORD length;
+	length = ExpandEnvironmentStringsW(str.c_str(), nullptr, 0);
+	if (length == 0)
+	{
+		LogDebug(L"cannot expand environment variables! ", LogLastError);
+		return std::wstring();
+	}
+	std::unique_ptr<wchar_t[]> buffer(new wchar_t[length]);
+	ExpandEnvironmentStringsW(str.c_str(), buffer.get(), length);
+	return std::wstring(buffer.get());
+}
+
+std::wstring sab::GetExecutablePath()
+{
+	DWORD bufferLength = MAX_PATH;
+	std::unique_ptr<wchar_t[]> buffer(new wchar_t[bufferLength]);
+
+	do
+	{
+		SetLastError(ERROR_SUCCESS);
+		DWORD strLength = GetModuleFileNameW(NULL, buffer.get(), bufferLength);
+		if (GetLastError() == ERROR_SUCCESS)
+		{
+			return std::wstring(buffer.get(), buffer.get() + strLength);
+		}
+		else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+		{
+			buffer.reset();
+			bufferLength += bufferLength / 2; // grow by 1.5
+			buffer.reset(new wchar_t[bufferLength]);
+		}
+		else
+		{
+			return std::wstring();
+		}
+	} while (true);
+}
+
+std::wstring sab::GetExecutableDirectory()
+{
+	std::wstring ret = GetExecutablePath();
+	while (!ret.empty() && (ret.back() != L'\\' && ret.back() != L'/'))
+		ret.pop_back();
+	if (!ret.empty())
+		ret.pop_back();
+	return ret;
+}
+
+std::wstring sab::GetDefaultConfigPath()
+{
+	std::wstring defaultFile = ReplaceEnvironmentVariables(L"%USERPROFILE%\\ssh-agent-bridge.ini");
+	if (CheckFileExists(defaultFile))
+		return defaultFile;
+	defaultFile = GetExecutableDirectory() + L"\\ssh-agent-bridge.ini";
+	if (CheckFileExists(defaultFile))
+		return defaultFile;
+	return std::wstring();
+}
+
+bool sab::CheckFileExists(const std::wstring& str)
+{
+	WIN32_FIND_DATAW findData;
+	HANDLE findHandle = FindFirstFileW(str.c_str(), &findData);
+	if (findHandle == INVALID_HANDLE_VALUE)
+	{
+		return false;
+	}
+	else
+	{
+		FindClose(findHandle);
+		return true;
+	}
+}
+

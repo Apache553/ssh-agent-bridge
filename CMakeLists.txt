@@ -1,5 +1,5 @@
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.11)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12)
 
 PROJECT(ssh-agent-bridge)
 
@@ -18,7 +18,10 @@ SET(HEADERS
 	"protocol_client_win32_namedpipe.h" 
 	"protocol_client_libassuan_socket_emu.h"
 	"message_dispatcher.h"
-	)
+	"ini_parse.h" 
+	"application.h"
+	"cmdline_option.h"
+	"service_support.h")
 
 SET(SOURCES
 	"main.cpp"
@@ -34,7 +37,10 @@ SET(SOURCES
 	"protocol_client_win32_namedpipe.cpp"
 	"protocol_client_libassuan_socket_emu.cpp"
 	"message_dispatcher.cpp"
-	)
+	"ini_parse.cpp" 
+	"cmdline_option.cpp" 
+	"application.cpp" 
+	"service_support.cpp")
 
 ADD_EXECUTABLE(ssh-agent-bridge WIN32 ${SOURCES} ${HEADERS})
 TARGET_LINK_LIBRARIES(ssh-agent-bridge Ws2_32 Bcrypt)

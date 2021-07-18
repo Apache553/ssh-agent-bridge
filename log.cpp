@@ -13,16 +13,14 @@ static const wchar_t* TranslateLogLevel(sab::Logger::LogLevel level)noexcept
 {
 	switch (level)
 	{
-	case sab::Logger::Debug:
+	case sab::Logger::LogLevel::Debug:
 		return L"Debug";
-	case sab::Logger::Info:
+	case sab::Logger::LogLevel::Info:
 		return L"Info";
-	case sab::Logger::Warning:
+	case sab::Logger::LogLevel::Warning:
 		return L"Warning";
-	case sab::Logger::Error:
+	case sab::Logger::LogLevel::Error:
 		return L"Error";
-	case sab::Logger::Fatal:
-		return L"FATAL";
 	}
 	return L""; // shut compiler up
 }
@@ -38,11 +36,13 @@ void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 	oss << L"][" << std::this_thread::get_id();
 	oss << L"][" << TranslateLogLevel(level) << L"] ";
 	oss << file << L':' << line;
+	oss << L": " << str << L'\n';
 	if (allocatedConsole)
 	{
 		std::lock_guard<std::mutex> lg(ioMutex);
-		std::fwprintf(stdoutStream, L"%s: %s\n", oss.str().c_str(), str.c_str());
+		std::fwprintf(stdoutStream, L"%s", oss.str().c_str());
 	}
+	OutputDebugStringW(oss.str().c_str());
 }
 
 void sab::Logger::SetLogOutputLevel(LogLevel level)
@@ -83,7 +83,7 @@ FILE* OpenHandleToFILE(HANDLE handle, const wchar_t* mode)noexcept
 
 sab::Logger::Logger(bool createConsole)noexcept
 	:stdinStream(nullptr), stdoutStream(nullptr), stderrStream(nullptr),
-	allocatedConsole(createConsole), outputLevel(Info)
+	allocatedConsole(createConsole), outputLevel(LogLevel::Info)
 {
 	std::setlocale(LC_ALL, "");
 

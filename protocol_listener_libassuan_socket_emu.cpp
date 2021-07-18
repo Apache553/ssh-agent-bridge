@@ -227,7 +227,7 @@ bool sab::LibassuanSocketEmulationListener::ListenLoop()
 		std::string data = socketFileStream.str();
 		DWORD writtenBytes = 0;
 		BOOL result = WriteFile(socketFileHandle, data.data(),
-			data.length(), &writtenBytes, NULL);
+			static_cast<DWORD>(data.length()), &writtenBytes, NULL);
 		if (result == FALSE || writtenBytes != data.length())
 		{
 			LogError(L"cannot write socket file content!");

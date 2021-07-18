@@ -1,14 +1,9 @@
 ﻿
 #include "log.h"
 #include "util.h"
-#include "protocol_ssh_helper.h"
-#include "protocol_listener_iocp_connection_manager.h"
-#include "protocol_listener_win32_namedpipe.h"
-#include "protocol_listener_unix_domain.h"
-#include "protocol_listener_pageant.h"
-#include "protocol_client_pageant.h"
-#include "protocol_client_win32_namedpipe.h"
-#include "message_dispatcher.h"
+#include "application.h"
+#include "cmdline_option.h"
+#include "service_support.h"
 
 #include <cstdio>
 #include <clocale>
@@ -22,8 +17,46 @@
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	PWSTR pCmdLine, int nCmdShow)
 {
-	sab::Logger::GetInstance(true);
-	sab::Logger::GetInstance().SetLogOutputLevel(sab::Logger::Debug);
+	//MessageBoxW(NULL, L"attach debugger", L"info", MB_OK);
+	sab::CommandLineOption options =
+		sab::ExtractCommandLineOption(
+			sab::SplitCommandLine(
+				GetCommandLineW()));
+
+	if (!options.isGood)
+		return 1;
+
+	sab::Logger::GetInstance(options.isDebug);
+
+	sab::Logger::GetInstance().SetLogOutputLevel(options.logLevel);
+
+	if (options.isIntallService)
+	{
+		bool r = sab::ServiceSupport::InstallService();
+		MessageBoxW(NULL,
+			r ? L"Successfully Installed." : L"Failed to install!",
+			L"Info",
+			r ? (MB_OK | MB_ICONINFORMATION) : (MB_OK | MB_ICONERROR));
+		return 0;
+	}
+	else if (options.isUninstallService)
+	{
+		bool r = sab::ServiceSupport::UninstallService();
+		MessageBoxW(NULL,
+			r ? L"Successfully uninstalled." : L"Failed to uninstall!",
+			L"Info",
+			r ? (MB_OK | MB_ICONINFORMATION) : (MB_OK | MB_ICONERROR));
+		return 0;
+	}
+
+	if (options.configPath.empty())
+		options.configPath = sab::GetDefaultConfigPath();
+	if (options.configPath.empty())
+	{
+		LogError(L"no config file!");
+		return 1;
+	}
+	LogDebug(L"using config from ", options.configPath);
 
 	WORD versionRequested = MAKEWORD(2, 2);
 	WSADATA wsaData;
@@ -33,48 +66,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		return 1;
 	}
 
-	auto dispatcher = std::make_shared<sab::MessageDispatcher>();
-	auto win32NamedPipeClient = std::make_shared<sab::Win32NamedPipeClient>(LR"_(\\.\pipe\openssh-ssh-agent)_");
-	dispatcher->SetActiveClient(win32NamedPipeClient);
+	int ret = sab::Application::GetInstance().RunStub(options.isService, options.configPath);
 
-	auto connectionManager = std::make_shared<sab::IocpListenerConnectionManager>();
-	//auto win32listener =std::make_shared<sab::Win32NamedPipeListener>(LR"_(\\.\pipe\openssh-ssh-agent)_", connectionManager);
-	auto unixListener = std::make_shared<sab::UnixDomainSocketListener>(LR"_(D:\ssh-agent.socket)_", connectionManager);
-	//auto client = std::make_shared<sab::PageantClient>();
-
-	if (!connectionManager->Initialize())
-		return 1;
-	connectionManager->SetEmitMessageCallback([&](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
-		{
-			dispatcher->PostRequest(msg, holdKey);
-		});
-	if (!connectionManager->Start())
-		return 1;
-	std::thread unixListenerThread([&]()
-		{
-			unixListener->Run();
-		});
-
-
-	auto pageantListener = std::make_shared<sab::PageantListener>();
-	pageantListener->SetEmitMessageCallback([&](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
-		{
-			dispatcher->PostRequest(msg, holdKey);
-		});
-	std::thread pageantListenerThread([&]() {
-		pageantListener->Run();
-		});
-
-
-
-	dispatcher->Start();
-	HANDLE exitEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-	assert(exitEvent != NULL);
-	WaitForSingleObject(exitEvent, INFINITE);
-	dispatcher->Stop();
-	pageantListener->Cancel();
-	unixListener->Cancel();
-	connectionManager->Stop();
 	WSACleanup();
-	return 0;
+	return ret;
 }
