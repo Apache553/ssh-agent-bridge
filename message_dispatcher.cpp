@@ -11,7 +11,7 @@ sab::MessageDispatcher::MessageDispatcher()
 void sab::MessageDispatcher::PostRequest(SshMessageEnvelope* message, std::shared_ptr<void> holdKey)
 {
 	std::lock_guard<std::mutex> lg(listMutex);
-	if(cancelFlag)
+	if (cancelFlag)
 	{
 		message->replyCallback(message, false);
 		return;
@@ -44,7 +44,7 @@ bool sab::MessageDispatcher::Start()
 				}
 				wakeCondition.wait(lk, [this]()
 					{
-						return !messageList.empty();
+						return !messageList.empty() || cancelFlag;
 					});
 			}
 		});
@@ -53,9 +53,11 @@ bool sab::MessageDispatcher::Start()
 
 void sab::MessageDispatcher::Stop()
 {
-	std::lock_guard<std::mutex> lg(listMutex);
-	cancelFlag = true;
-	wakeCondition.notify_one();
+	{
+		std::lock_guard<std::mutex> lg(listMutex);
+		cancelFlag = true;
+		wakeCondition.notify_one();
+	}
 	if (workerThread.joinable())
 		workerThread.join();
 }
@@ -64,7 +66,7 @@ sab::MessageDispatcher::~MessageDispatcher()
 {
 	Stop();
 	std::lock_guard<std::mutex> lg(listMutex);
-	while(!messageList.empty())
+	while (!messageList.empty())
 	{
 		Message& msg = messageList.back();
 		msg.first->replyCallback(msg.first, false);

@@ -9,7 +9,7 @@
 #include <WinSock2.h>
 
 sab::PageantListener::PageantListener()
-	:windowHandle(NULL), cancelFlag(false), messageOnAir(false), messageStatus(false)
+	: cancelFlag(false), windowHandle(NULL), messageOnAir(false), messageStatus(false)
 {
 }
 
@@ -51,11 +51,6 @@ bool sab::PageantListener::Run()
 		LogError(L"cannot create Pageant window! ", LogLastError);
 		return false;
 	}
-	auto windowGuard = HandleGuard(windowHandle, [this](HWND hwnd)
-		{
-			CloseHandle(hwnd);
-			windowHandle = NULL;
-		});
 
 	SetLastError(ERROR_SUCCESS);
 	SetWindowLongPtrW(windowHandle, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
@@ -68,7 +63,8 @@ bool sab::PageantListener::Run()
 	// message loop
 	MSG message;
 	BOOL status;
-	while ((status = GetMessageW(&message, windowHandle, 0, 0)) != 0)
+	HWND localWindowHandle = windowHandle;
+	while ((status = GetMessageW(&message, localWindowHandle, 0, 0)) != 0)
 	{
 		if (status == -1)
 		{
@@ -106,10 +102,6 @@ bool sab::PageantListener::IsCancelled() const
 
 sab::PageantListener::~PageantListener()
 {
-	if (windowHandle != NULL)
-	{
-		CloseHandle(windowHandle);
-	}
 }
 
 void sab::PageantListener::SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback)
@@ -120,9 +112,10 @@ void sab::PageantListener::SetEmitMessageCallback(std::function<void(SshMessageE
 LRESULT WINAPI sab::PageantListener::PageantWindowProcedure(HWND windowHandle,
 	UINT messageId, WPARAM wParam, LPARAM lParam)
 {
-	if (messageId == WM_COPYDATA)
-	{
-		COPYDATASTRUCT* cds = reinterpret_cast<COPYDATASTRUCT*>(lParam);
+	COPYDATASTRUCT* cds;
+	switch (messageId) {
+	case WM_COPYDATA:
+		cds = reinterpret_cast<COPYDATASTRUCT*>(lParam);
 		if (cds->dwData == AGENT_COPYDATA_ID)
 		{
 			// process request
@@ -135,9 +128,10 @@ LRESULT WINAPI sab::PageantListener::PageantWindowProcedure(HWND windowHandle,
 		{
 			return 0;
 		}
-	}
-	else
-	{
+	case WM_CLOSE:
+		PostQuitMessage(0);
+		return 0;
+	default:
 		return DefWindowProcW(windowHandle, messageId, wParam, lParam);
 	}
 }
@@ -186,7 +180,7 @@ int sab::PageantListener::ProcessRequest(COPYDATASTRUCT* cds)
 	std::weak_ptr<SshMessageEnvelope> weakMessage(message);
 	uint32_t beLength;
 	memcpy(&beLength, charMem, HEADER_SIZE);
-	message->replyCallback = [this,weakMessage](SshMessageEnvelope*, bool status)
+	message->replyCallback = [this, weakMessage](SshMessageEnvelope*, bool status)
 	{
 		if (weakMessage.lock() == nullptr)
 			return; // operation canceled
