@@ -51,6 +51,9 @@ std::pair<sab::IniFile, bool> sab::ParseIniFile(const std::wstring& path)
 			}
 			else
 			{
+				if (ini.find(sectionName) != ini.end())
+					// duplicated name
+					return ret;
 				ini.emplace(std::move(sectionName), std::move(currentSection));
 				sectionName = std::move(line);
 				currentSection = {};
@@ -93,20 +96,26 @@ std::pair<sab::IniFile, bool> sab::ParseIniFile(const std::wstring& path)
 	return ret;
 }
 
-const sab::IniSection* sab::GetSection(const IniFile& file, const std::wstring& name)
+std::pair<std::wstring, bool> sab::GetPropertyString(const IniSection& section, const std::wstring& name)
 {
-	if (file.find(name) == file.end())
+	auto iter = section.find(name);
+	if (iter == section.end())
 	{
-		return nullptr;
+		return { {},false };
 	}
-	return &file.find(name)->second;
+	return { iter->second ,true };
 }
 
-std::wstring sab::GetSectionProperty(const IniSection& section, const std::wstring& name)
+std::pair<bool, bool> sab::GetPropertyBoolean(const IniSection& section, const std::wstring& name)
 {
-	if (section.find(name) == section.end())
+	auto iter = section.find(name);
+	if (iter == section.end())
 	{
-		return std::wstring();
+		return { {},false };
 	}
-	return section.find(name)->second;
+	if (iter->second == L"true")
+		return { true,true };
+	else if (iter->second == L"false")
+		return{ false,true };
+	return { {},false };
 }

@@ -17,26 +17,52 @@
 #include <algorithm>
 #include <thread>
 #include <vector>
+#include <functional>
 
 // workaround Windows.h
 #undef max
+
+struct TypeAction
+{
+	std::wstring name;
+	std::function<
+		std::shared_ptr<sab::ProtocolListenerBase>(
+			const sab::IniSection&,
+			std::shared_ptr<sab::IocpListenerConnectionManager>,
+			std::shared_ptr<sab::MessageDispatcher>
+			)
+	> createListener;
+	std::function<
+		std::shared_ptr<sab::ProtocolClientBase>(
+			const sab::IniSection&
+			)
+	> createClient;
+};
+
+static TypeAction actionList[] = {
+	{L"namedpipe", sab::SetupNamedPipeListener, sab::SetupNamedPipeClient },
+	{L"pageant", sab::SetupPageantListener, sab::SetupPageantClient },
+	{L"wsl2", sab::SetupWsl2Listener },
+	{L"unix", sab::SetupUnixListener },
+	{L"assuan", sab::SetupAssuanForwarder }
+};
 
 static bool GetLxPermissionInfo(const sab::IniSection& section, sab::LxPermissionInfo& perm)
 {
 	const wchar_t* fieldName;
 	try {
 		fieldName = L"metadata-uid";
-		auto str = sab::GetSectionProperty(section, fieldName);
-		if (!str.empty())
-			perm.uid = std::stoi(str, nullptr, 0);
+		auto str = sab::GetPropertyString(section, fieldName);
+		if (str.second)
+			perm.uid = std::stoi(str.first, nullptr, 0);
 		fieldName = L"metadata-gid";
-		str = sab::GetSectionProperty(section, fieldName);
-		if (!str.empty())
-			perm.gid = std::stoi(str, nullptr, 0);
+		str = sab::GetPropertyString(section, fieldName);
+		if (str.second)
+			perm.gid = std::stoi(str.first, nullptr, 0);
 		fieldName = L"metadata-mode";
-		str = sab::GetSectionProperty(section, fieldName);
-		if (!str.empty())
-			perm.mode = std::stoi(str, nullptr, 0);
+		str = sab::GetPropertyString(section, fieldName);
+		if (str.second)
+			perm.mode = std::stoi(str.first, nullptr, 0);
 	}
 	catch (std::invalid_argument)
 	{
@@ -49,28 +75,6 @@ static bool GetLxPermissionInfo(const sab::IniSection& section, sab::LxPermissio
 		return false;
 	}
 	return true;
-}
-
-static inline bool GetBoolProperty(const sab::IniSection& section, const std::wstring& name)
-{
-	auto str = sab::GetSectionProperty(section, name);
-	return str == L"true";
-}
-
-static std::vector<std::wstring> SplitString(const std::wstring& str, wchar_t delim = L' ')
-{
-	std::vector<std::wstring> ret;
-	std::wistringstream iss(str);
-	std::wstring tmp;
-
-	while (!iss.eof())
-	{
-		std::getline(iss, tmp, delim);
-		if (!tmp.empty())
-			ret.emplace_back(std::move(tmp));
-		tmp = {};
-	}
-	return ret;
 }
 
 sab::Application::Application()
@@ -86,59 +90,12 @@ sab::Application::~Application()
 
 bool sab::Application::Initialize(const IniFile& config)
 {
-	const IniSection* general = GetSection(config, L"general");
-	if (general == nullptr)
-	{
-		LogError(L"missing config [general]");
-		return false;
-	}
-
-	auto listenerName = GetSectionProperty(*general, L"listeners");
-	if (listenerName.empty())
-	{
-		LogError(L"missing config [general].listeners");
-		return false;
-	}
-	auto listenerNameList = SplitString(listenerName);
-
-	auto clientName = GetSectionProperty(*general, L"client");
-	if (clientName.empty())
-	{
-		LogError(L"missing config [general].client");
-		return false;
-	}
-
-	Logger::LogLevel logLevel = Logger::LogLevel::Invalid;
-	auto loglevelStr = GetSectionProperty(*general, L"loglevel");
-	if (EqualStringIgnoreCase(loglevelStr, L"debug"))
-		logLevel = Logger::LogLevel::Debug;
-	else if (EqualStringIgnoreCase(loglevelStr, L"info"))
-		logLevel = Logger::LogLevel::Info;
-	else if (EqualStringIgnoreCase(loglevelStr, L"warn"))
-		logLevel = Logger::LogLevel::Warning;
-	else if (EqualStringIgnoreCase(loglevelStr, L"error"))
-		logLevel = Logger::LogLevel::Error;
-	if (logLevel != Logger::LogLevel::Invalid)
-		Logger::GetInstance().SetLogOutputLevel(logLevel);
-		
-
-	// validate
-	if (std::find(listenerNameList.begin(), listenerNameList.end(), clientName) != listenerNameList.end())
-	{
-		LogError(L"client ", clientName, " conflicts with listeners");
-		return false;
-	}
-	std::sort(listenerNameList.begin(), listenerNameList.end());
-	if (std::unique(listenerNameList.begin(), listenerNameList.end()) != listenerNameList.end())
-	{
-		LogError(L"duplicated listener dectected");
-		return false;
-	}
+	std::vector<std::wstring> nameList;
 
 	// do init
 	connectionManager = std::make_shared<IocpListenerConnectionManager>();
 	dispatcher = std::make_shared<MessageDispatcher>();
-	connectionManager->SetEmitMessageCallback([&](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
+	connectionManager->SetEmitMessageCallback([=](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
 		{
 			dispatcher->PostRequest(msg, std::move(holdKey));
 		});
@@ -147,49 +104,109 @@ bool sab::Application::Initialize(const IniFile& config)
 		LogError(L"cannot initialize connection manager");
 		return false;
 	}
-	{
-		std::shared_ptr<ProtocolClientBase> p;
-		if (clientName == L"pageant")
-			p = SetupPageantClient(config);
-		else if (clientName == L"namedpipe")
-			p = SetupNamedPipeClient(config);
-		else
-			LogError(L"unknown client name ", clientName);
 
-		if (p == nullptr)
+	bool clientSetFlag = false;
+	for (const auto& s : config)
+	{
+		const std::wstring& sectionName = s.first;
+		const IniSection& section = s.second;
+		if (sectionName == L"general")
 		{
-			LogError(L"initialize client ", clientName, " failed");
-			return false;
+			Logger::LogLevel logLevel = Logger::LogLevel::Invalid;
+			auto loglevelStr = GetPropertyString(section, L"loglevel");
+			if (loglevelStr.second) {
+				if (EqualStringIgnoreCase(loglevelStr.first, L"debug"))
+					logLevel = Logger::LogLevel::Debug;
+				else if (EqualStringIgnoreCase(loglevelStr.first, L"info"))
+					logLevel = Logger::LogLevel::Info;
+				else if (EqualStringIgnoreCase(loglevelStr.first, L"warn"))
+					logLevel = Logger::LogLevel::Warning;
+				else if (EqualStringIgnoreCase(loglevelStr.first, L"error"))
+					logLevel = Logger::LogLevel::Error;
+				if (logLevel == Logger::LogLevel::Invalid)
+				{
+					LogError(L"invalid loglevel!");
+					return false;
+				}
+				Logger::GetInstance().SetLogOutputLevel(logLevel);
+			}
 		}
 		else
 		{
-			client = std::move(p);
+			constexpr size_t actionListSize = sizeof(actionList) / sizeof(TypeAction);
+			auto type = GetPropertyString(section, L"type");
+			auto role = GetPropertyString(section, L"role");
+			if (!type.second || !role.second)
+			{
+				LogError(L"section \"", sectionName, "\" has no type and role property!");
+				return false;
+			}
+			bool findFlag = false;
+			for (size_t i = 0; i < actionListSize; ++i)
+			{
+				if (type.first == actionList[i].name)
+				{
+					findFlag = true;
+					auto existIter = std::find(nameList.begin(), nameList.end(), type.first);
+					if (existIter != nameList.end() && type.first != L"assuan")
+					{
+						LogError(L"type \"", type.first, L"\" cannot be set more than once!");
+						return false;
+					}
+					nameList.push_back(type.first);
+					if (role.first == L"listener")
+					{
+						if (!actionList[i].createListener)
+						{
+							LogError(L"type \"", type.first, L"\" does not support role \"", role.first, L"\"");
+							return false;
+						}
+						auto ptr = actionList[i].createListener(section, connectionManager, dispatcher);
+						if (ptr == nullptr)
+						{
+							LogError(L"cannot create listener, check your config!");
+							return false;
+						}
+						listeners.emplace_back(std::move(ptr));
+					}
+					else if (role.first == L"client")
+					{
+						if (!actionList[i].createClient)
+						{
+							LogError(L"type \"", type.first, L"\" does not support role \"", role.first, L"\"");
+							return false;
+						}
+						if (clientSetFlag)
+						{
+							LogError(L"cannot set more than once client!");
+							return false;
+						}
+						clientSetFlag = true;
+						auto ptr = actionList[i].createClient(section);
+						if (ptr == nullptr)
+						{
+							return false;
+						}
+						dispatcher->SetActiveClient(ptr);
+					}
+					else
+					{
+						LogError(L"section \"", sectionName, L"\" has invalid role!");
+						return false;
+					}
+				}
+			}
+			if (!findFlag)
+			{
+				LogError(L"unknown type \"", type.first, L"\"!");
+				return false;
+			}
 		}
-		dispatcher->SetActiveClient(client);
 	}
-	for (auto& name : listenerNameList)
+	if (!clientSetFlag)
 	{
-		std::shared_ptr<ProtocolListenerBase> p;
-		if (name == L"wsl2")
-			p = SetupWsl2Listener(config);
-		else if (name == L"namedpipe")
-			p = SetupNamedPipeListener(config);
-		else if (name == L"unix")
-			p = SetupUnixListener(config);
-		else if (name == L"pageant")
-			p = SetupPageantListener(config);
-		else
-			LogError(L"unknown listener name ", name);
-
-		if (p == nullptr)
-		{
-			LogError(L"initialize listener ", name, " failed");
-			return false;
-		}
-		else
-		{
-			listeners.emplace_back(std::move(p));
-		}
+		LogError(L"no client set!");
+		return false;
 	}
 
 	return true;
@@ -299,119 +316,6 @@ sab::Application& sab::Application::GetInstance()
 	return inst;
 }
 
-std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupWsl2Listener(const IniFile& config)
-{
-	const IniSection* section = GetSection(config, L"wsl2");
-	if (section == nullptr)
-		return nullptr;
-
-	auto socketPath = GetSectionProperty(*section, L"socket-path");
-	socketPath = ReplaceEnvironmentVariables(socketPath);
-	if (socketPath.empty())
-	{
-		LogError(L"missing config [wsl2].socket-path");
-		return nullptr;
-	}
-	auto socketAddress = GetSectionProperty(*section, L"socket-address");
-	if (socketAddress.empty())
-	{
-		LogError(L"missing config [wsl2].socket-address");
-		return nullptr;
-	}
-
-	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
-	bool writeWslMetadata = GetBoolProperty(*section, L"write-wsl-metadata");
-
-	LxPermissionInfo perm;
-	perm.mode = 0600;
-	if (writeWslMetadata && !GetLxPermissionInfo(*section, perm))
-		return nullptr;
-
-	return std::make_shared<LibassuanSocketEmulationListener>(socketPath,
-		socketAddress, connectionManager, enablePermissionCheck, writeWslMetadata, perm);
-}
-
-std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupNamedPipeListener(const IniFile& config)
-{
-	const IniSection* section = GetSection(config, L"namedpipe");
-	if (section == nullptr)
-		return nullptr;
-
-	auto pipePath = GetSectionProperty(*section, L"namedpipe-path");
-	pipePath = ReplaceEnvironmentVariables(pipePath);
-	if (pipePath.empty())
-	{
-		LogError(L"missing config [namedpipe].namedpipe-path");
-		return nullptr;
-	}
-	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
-
-	return std::make_shared<Win32NamedPipeListener>(pipePath, connectionManager, enablePermissionCheck);
-}
-
-std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupPageantListener(const IniFile& config)
-{
-	const IniSection* section = GetSection(config, L"pageant");
-	if (section == nullptr)
-		return nullptr;
-
-	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
-	bool allowNonElevatedAccess = GetBoolProperty(*section, L"allow-non-elevated-access");
-	auto ptr = std::make_shared<PageantListener>(enablePermissionCheck, allowNonElevatedAccess);
-	ptr->SetEmitMessageCallback([&](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
-		{
-			dispatcher->PostRequest(msg, std::move(holdKey));
-		});
-	return ptr;
-}
-
-std::shared_ptr<sab::ProtocolListenerBase> sab::Application::SetupUnixListener(const IniFile& config)
-{
-	const IniSection* section = GetSection(config, L"unix");
-	if (section == nullptr)
-		return nullptr;
-
-	auto socketPath = GetSectionProperty(*section, L"socket-path");
-	socketPath = ReplaceEnvironmentVariables(socketPath);
-	if (socketPath.empty())
-	{
-		LogError(L"missing config [unix].socket-path");
-		return nullptr;
-	}
-
-	bool enablePermissionCheck = GetBoolProperty(*section, L"enable-permission-check");
-	bool writeWslMetadata = GetBoolProperty(*section, L"write-wsl-metadata");
-
-	LxPermissionInfo perm;
-	perm.mode = 0700;
-	if (writeWslMetadata && !GetLxPermissionInfo(*section, perm))
-		return nullptr;
-
-	return std::make_shared<UnixDomainSocketListener>(socketPath, connectionManager,
-		enablePermissionCheck, writeWslMetadata, perm);
-}
-
-std::shared_ptr<sab::ProtocolClientBase> sab::Application::SetupPageantClient(const IniFile& config)
-{
-	return std::make_shared<PageantClient>();
-}
-
-std::shared_ptr<sab::ProtocolClientBase> sab::Application::SetupNamedPipeClient(const IniFile& config)
-{
-	const IniSection* section = GetSection(config, L"namedpipe");
-	if (section == nullptr)
-		return nullptr;
-
-	auto pipePath = GetSectionProperty(*section, L"namedpipe-path");
-	pipePath = ReplaceEnvironmentVariables(pipePath);
-	if (pipePath.empty())
-	{
-		LogError(L"missing config [namedpipe].namedpipe-path");
-		return nullptr;
-	}
-	return std::make_shared<Win32NamedPipeClient>(pipePath);
-}
-
 void __stdcall sab::Application::ServiceControlHandler(DWORD dwControl)
 {
 	switch (dwControl)
@@ -422,4 +326,153 @@ void __stdcall sab::Application::ServiceControlHandler(DWORD dwControl)
 		break;
 	}
 	return;
+}
+
+std::shared_ptr<sab::ProtocolListenerBase> sab::SetupWsl2Listener(
+	const IniSection& section,
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<MessageDispatcher> dispatcher)
+{
+	auto socketPath = GetPropertyString(section, L"path");
+	auto socketAddress = GetPropertyString(section, L"listen-address");
+	auto writeMetadata = GetPropertyBoolean(section, L"write-lxss-metadata");
+	auto enablePermissionCheck = GetPropertyBoolean(section, L"enable-permission-check");
+	LxPermissionInfo perm;
+
+	if (!socketPath.second)
+		return nullptr;
+
+	if (!socketAddress.second)
+		socketAddress.first = L"0.0.0.0";
+
+	if (!writeMetadata.second)
+		writeMetadata.first = false;
+
+	if (!enablePermissionCheck.second)
+		enablePermissionCheck.first = true;
+
+	if (writeMetadata.first && !GetLxPermissionInfo(section, perm))
+		return nullptr;
+
+	socketPath.first = ReplaceEnvironmentVariables(socketPath.first);
+
+	return std::make_shared<LibassuanSocketEmulationListener>(
+		socketPath.first,
+		socketAddress.first,
+		manager,
+		enablePermissionCheck.first,
+		writeMetadata.first,
+		perm);
+}
+
+std::shared_ptr<sab::ProtocolListenerBase> sab::SetupNamedPipeListener(
+	const IniSection& section,
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<MessageDispatcher> dispatcher)
+{
+	auto socketPath = GetPropertyString(section, L"path");
+	auto enablePermissionCheck = GetPropertyBoolean(section, L"enable-permission-check");
+	LxPermissionInfo perm;
+
+	if (!socketPath.second)
+		return nullptr;
+
+	if (!enablePermissionCheck.second)
+		enablePermissionCheck.first = true;
+
+	socketPath.first = ReplaceEnvironmentVariables(socketPath.first);
+
+	return std::make_shared<Win32NamedPipeListener>(
+		socketPath.first,
+		manager,
+		enablePermissionCheck.first);
+}
+
+std::shared_ptr<sab::ProtocolListenerBase> sab::SetupPageantListener(
+	const IniSection& section,
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<MessageDispatcher> dispatcher)
+{
+	auto enablePermissionCheck = GetPropertyBoolean(section, L"enable-permission-check");
+	auto allowNonelevatedAccess = GetPropertyBoolean(section, L"allow-non-elevated-access");
+
+	if (!enablePermissionCheck.second)
+		enablePermissionCheck.first = true;
+
+	if (!allowNonelevatedAccess.second)
+		allowNonelevatedAccess.first = false;
+
+	auto ptr = std::make_shared<PageantListener>(
+		enablePermissionCheck.first,
+		allowNonelevatedAccess.first);
+
+	if (ptr)
+	{
+		ptr->SetEmitMessageCallback([=](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
+			{
+				dispatcher->PostRequest(msg, std::move(holdKey));
+			});
+	}
+	
+	return ptr;
+
+}
+
+std::shared_ptr<sab::ProtocolListenerBase> sab::SetupUnixListener(
+	const IniSection& section,
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<MessageDispatcher> dispatcher)
+{
+	auto socketPath = GetPropertyString(section, L"path");
+	auto writeMetadata = GetPropertyBoolean(section, L"write-lxss-metadata");
+	auto enablePermissionCheck = GetPropertyBoolean(section, L"enable-permission-check");
+	LxPermissionInfo perm;
+
+	if (!socketPath.second)
+		return nullptr;
+
+	if (!writeMetadata.second)
+		writeMetadata.first = false;
+
+	if (!enablePermissionCheck.second)
+		enablePermissionCheck.first = true;
+
+	if (writeMetadata.first && !GetLxPermissionInfo(section, perm))
+		return nullptr;
+
+	socketPath.first = ReplaceEnvironmentVariables(socketPath.first);
+
+	return std::make_shared<UnixDomainSocketListener>(
+		socketPath.first,
+		manager,
+		enablePermissionCheck.first,
+		writeMetadata.first,
+		perm);
+}
+
+std::shared_ptr<sab::ProtocolListenerBase> sab::SetupAssuanForwarder(
+	const IniSection& section,
+	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<MessageDispatcher> dispatcher)
+{
+	// TODO
+	return nullptr;
+}
+
+std::shared_ptr<sab::ProtocolClientBase> sab::SetupPageantClient(const IniSection& section)
+{
+	return std::make_shared<PageantClient>();
+}
+
+std::shared_ptr<sab::ProtocolClientBase> sab::SetupNamedPipeClient(const IniSection& section)
+{
+	auto socketPath = GetPropertyString(section, L"path");
+
+	if (!socketPath.second)
+		return nullptr;
+
+	socketPath.first = ReplaceEnvironmentVariables(socketPath.first);
+
+	return std::make_shared<Win32NamedPipeClient>(
+		socketPath.first);
 }

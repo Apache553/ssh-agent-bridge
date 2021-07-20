@@ -50,4 +50,23 @@ namespace sab
 		static void __stdcall ServiceControlHandler(DWORD dwControl);
 
 	};
+
+	std::shared_ptr<ProtocolListenerBase> SetupWsl2Listener(const IniSection& section,
+		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<MessageDispatcher> dispatcher);
+	std::shared_ptr<ProtocolListenerBase> SetupNamedPipeListener(const IniSection& section,
+		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<MessageDispatcher> dispatcher);
+	std::shared_ptr<ProtocolListenerBase> SetupPageantListener(const IniSection& section,
+		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<MessageDispatcher> dispatcher);
+	std::shared_ptr<ProtocolListenerBase> SetupUnixListener(const IniSection& section,
+		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<MessageDispatcher> dispatcher);
+	std::shared_ptr<ProtocolListenerBase> SetupAssuanForwarder(const IniSection& section,
+		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<MessageDispatcher> dispatcher);
+
+	std::shared_ptr<ProtocolClientBase> SetupPageantClient(const IniSection& section);
+	std::shared_ptr<ProtocolClientBase> SetupNamedPipeClient(const IniSection& section);
 }

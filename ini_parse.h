@@ -12,6 +12,6 @@ namespace sab
 
 	std::pair<IniFile, bool> ParseIniFile(const std::wstring& path);
 
-	const IniSection* GetSection(const IniFile& file, const std::wstring& name);
-	std::wstring GetSectionProperty(const IniSection& section, const std::wstring& name);
+	std::pair<std::wstring, bool> GetPropertyString(const IniSection& section, const std::wstring& name);
+	std::pair<bool, bool> GetPropertyBoolean(const IniSection& section, const std::wstring& name);
 }

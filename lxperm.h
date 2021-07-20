@@ -11,9 +11,9 @@ namespace sab
 
 	struct LxPermissionInfo
 	{
-		int uid = 1000;
-		int gid = 1000;
-		int mode = 0777;
+		int uid = -1;
+		int gid = -1;
+		int mode = -1;
 	};
 
 	bool SetLxPermission(const std::wstring& path, const LxPermissionInfo& perm, bool isSpecial);
