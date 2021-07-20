@@ -104,7 +104,7 @@ void sab::Logger::FreeConsole()
 		std::fclose(stdinStream);
 		std::fclose(stdoutStream);
 		std::fclose(stderrStream);
-		FreeConsole();
+		::FreeConsole();
 	}
 }
 
