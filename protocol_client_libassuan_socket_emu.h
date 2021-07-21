@@ -16,7 +16,6 @@ namespace sab
 	private:
 		std::wstring pipePath;
 	public:
-		static constexpr int NONCE_LENGTH = 16;
 
 		LibassuanSocketEmulationClient(const std::wstring& pipePath);
 		~LibassuanSocketEmulationClient();

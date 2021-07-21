@@ -1,25 +1,17 @@
 
 #pragma once
 
-#include "protocol_ssh_helper.h"
 #include "protocol_listener_base.h"
 
-#include <atomic>
-#include <memory>
 #include <list>
-#include <mutex>
-#include <thread>
-#include <functional>
-
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#include <memory>
 
 namespace sab
 {
 	static constexpr size_t MAX_BUFFER_SIZE = 4 * 1024;
 
-	class IocpListenerConnectionManager;
-
+	class IConnectionManager;
+	
 	class ListenerConnectionData
 	{
 	public:
@@ -77,9 +69,10 @@ namespace sab
 			/// <summary>
 			/// connection ends, but the context is still referenced by someone else
 			/// </summary>
-			Destroyed
+			Destroyed,
 		};
 		/*
+		 * Normal Message:
 		 * Initialized -> Handshake -> Ready -> ReadHeader -> ReadBody -> WaitReply -> WriteReply
 		 *                               A                                                 |
 		 *                               +-------------------------------------------------+
@@ -92,9 +85,19 @@ namespace sab
 		HANDLE handle;
 
 		/// <summary>
+		/// peer handle
+		/// </summary>
+		HANDLE peer;
+
+		/// <summary>
 		/// set to true if it is a socket
 		/// </summary>
 		bool isSocket;
+
+		/// <summary>
+		/// peer is a socket or not
+		/// </summary>
+		bool peerIsSocket;
 
 		/// <summary>
 		/// OVERLAPPED structure for iocp
@@ -154,7 +157,7 @@ namespace sab
 		/// <summary>
 		/// connection manager owns the context
 		/// </summary>
-		std::shared_ptr<IocpListenerConnectionManager> owner;
+		std::shared_ptr<IConnectionManager> owner;
 	public:
 
 		IoContext();
@@ -181,70 +184,35 @@ namespace sab
 		void DoneIo();
 	};
 
-	class IocpListenerConnectionManager
-		:public std::enable_shared_from_this<IocpListenerConnectionManager>
+	class IConnectionManager
+		:public std::enable_shared_from_this<IConnectionManager>
 	{
-	private:
-		/// <summary>
-		/// event handle to cancel worker thread
-		/// </summary>
-		HANDLE cancelEvent;
-
-		/// <summary>
-		/// handle of the completion port
-		/// </summary>
-		HANDLE iocpHandle;
-
-		/// <summary>
-		/// worker thread
-		/// </summary>
-		std::thread iocpThread;
-
-		/// <summary>
-		/// list of active connections
-		/// </summary>
-		std::list<std::shared_ptr<IoContext>> contextList;
-
-		/// <summary>
-		/// initialie flag
-		/// </summary>
-		bool initialized;
-
-		/// <summary>
-		/// mutex to sync access to contextList
-		/// </summary>
-		std::mutex listMutex;
-
-		/// <summary>
-		/// callback to emit a message
-		/// </summary>
-		std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)> receiveCallback;
 	public:
-		IocpListenerConnectionManager();
-		IocpListenerConnectionManager(const IocpListenerConnectionManager&) = delete;
-		IocpListenerConnectionManager(IocpListenerConnectionManager&&) = delete;
+		IConnectionManager() = default;
+		IConnectionManager(const IConnectionManager&) = delete;
+		IConnectionManager(IConnectionManager&&) = delete;
 
-		IocpListenerConnectionManager& operator=(const IocpListenerConnectionManager&) = delete;
-		IocpListenerConnectionManager& operator=(IocpListenerConnectionManager&&) = delete;
+		IConnectionManager& operator=(const IConnectionManager&) = delete;
+		IConnectionManager& operator=(IConnectionManager&&) = delete;
 
-		~IocpListenerConnectionManager();
-	public:
+		virtual ~IConnectionManager() = default;
+
 		/// <summary>
 		/// actually initialize the manager
 		/// </summary>
 		/// <returns>true for success, false for failure</returns>
-		bool Initialize();
+		virtual bool Initialize() = 0;
 
 		/// <summary>
 		/// start worker thread
 		/// </summary>
 		/// <returns>true for success, false for failure</returns>
-		bool Start();
+		virtual bool Start() = 0;
 
 		/// <summary>
 		/// stop worker thread (if is running)
 		/// </summary>
-		void Stop();
+		virtual void Stop() = 0;
 
 		/// <summary>
 		/// delegate a connection which is ready for io to manager
@@ -253,62 +221,20 @@ namespace sab
 		/// <param name="listener">listener instance</param>
 		/// <param name="data">listener specific data</param>
 		/// <returns>true for success, false for failure</returns>
-		bool DelegateConnection(HANDLE connection,
+		virtual bool DelegateConnection(HANDLE connection,
 			std::shared_ptr<ProtocolListenerBase> listener,
 			std::shared_ptr<ListenerConnectionData> data,
-			bool isSocket);
-
-		/// <summary>
-		/// set message handler when received a message
-		/// </summary>
-		/// <param name="callback">the callback function</param>
-		void SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback);
-
-	private:
+			bool isSocket) = 0;
+	protected:
 		/// <summary>
 		/// remove context from context list
 		/// </summary>
 		/// <param name="context"></param>
-		void RemoveContext(IoContext* context);
-
-		/// <summary>
-		/// worker thread function
-		/// </summary>
-		void IocpThreadProc();
-
-		/// <summary>
-		/// actually process io operation
-		/// </summary>
-		/// <param name="context">the context</param>
-		/// <param name="noRealIo">set to true to not get completion status</param>
-		void DoIoCompletion(std::shared_ptr<IoContext> context, bool noRealIo);
-
-		/// <summary>
-		/// Helper function for callback
-		/// </summary>
-		/// <param name="weakContext">weak_ptr of IoContext</param>
-		/// <param name="message">the message</param>
-		/// <param name="status">operation status</param>
-		void PostMessageReply(std::shared_ptr<void> genericContext,
-			SshMessageEnvelope* message, bool status);
+		virtual void RemoveContext(IoContext* context) = 0;
 
 		/// <summary>
 		/// make IoContext our friend
 		/// </summary>
 		friend class IoContext;
 	};
-
-	class IIocpListener
-	{
-	public:
-		/// <summary>
-		/// do handshake
-		/// </summary>
-		/// <param name="context">the io context</param>
-		/// <returns>true for completed handshake, else false</returns>
-		virtual bool DoHandshake(std::shared_ptr<IoContext> context, int transferred) = 0;
-
-		virtual ~IIocpListener() = default;
-	};
-
 }

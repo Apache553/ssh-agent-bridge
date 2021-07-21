@@ -2,13 +2,13 @@
 #pragma once
 
 #include "protocol_listener_base.h"
-#include "protocol_listener_iocp_connection_manager.h"
+#include "protocol_iocp_connection_manager.h"
 #include "lxperm.h"
 
 namespace sab
 {
 	class LibassuanSocketEmulationListener
-		: public ProtocolListenerBase, public IIocpListener
+		: public ProtocolListenerBase, public IManagedListener
 	{
 	public:
 		static constexpr size_t NONCE_LENGTH = 16;

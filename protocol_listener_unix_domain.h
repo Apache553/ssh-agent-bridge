@@ -2,13 +2,13 @@
 #pragma once
 
 #include "protocol_listener_base.h"
-#include "protocol_listener_iocp_connection_manager.h"
+#include "protocol_iocp_connection_manager.h"
 #include "lxperm.h"
 
 namespace sab
 {
 	class UnixDomainSocketListener
-		: public ProtocolListenerBase, public IIocpListener
+		: public ProtocolListenerBase, public IManagedListener
 	{
 	private:
 		std::wstring socketPath;

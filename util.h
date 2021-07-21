@@ -73,7 +73,6 @@ namespace sab
 
 	bool EqualStringIgnoreCase(const std::wstring& a, const std::wstring& b);
 
-
 }
 
 #define LogLastError L"0x", std::setfill(L'0'), std::setw(8), std::right, \

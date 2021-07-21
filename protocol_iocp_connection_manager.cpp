@@ -1,11 +1,15 @@
 
 #include "log.h"
 #include "util.h"
-#include "protocol_listener_iocp_connection_manager.h"
+#include "protocol_iocp_connection_manager.h"
+#include "protocol_connector_libassuan_socket_emu.h"
+#include "protocol_connector_win32_namedpipe.h"
 
 #include <cassert>
 
 #include <WinSock2.h>
+
+SOCKET DuplicateSocket(SOCKET s);
 
 static constexpr const wchar_t* IoContextStateToString(sab::IoContext::State state)
 {
@@ -34,9 +38,9 @@ static constexpr const wchar_t* IoContextStateToString(sab::IoContext::State sta
 }
 
 sab::IoContext::IoContext()
-	:handle(INVALID_HANDLE_VALUE), state(State::Initialized),
+	:handle(INVALID_HANDLE_VALUE), peer(INVALID_HANDLE_VALUE), state(State::Initialized),
 	ioDataOffest(0), ioBufferOffest(0), ioNeedBytes(0),
-	holdFlag(false)
+	holdFlag(false), isSocket(false), peerIsSocket(false)
 {
 	memset(&overlapped, 0, sizeof(OVERLAPPED));
 }
@@ -44,21 +48,35 @@ sab::IoContext::IoContext()
 sab::IoContext::~IoContext()
 {
 	if (handle != INVALID_HANDLE_VALUE)
-		CloseHandle(handle);
+		if (isSocket)
+			closesocket(reinterpret_cast<SOCKET>(handle));
+		else
+			CloseHandle(handle);
+
+	if (peer != INVALID_HANDLE_VALUE)
+		if (peerIsSocket)
+			closesocket(reinterpret_cast<SOCKET>(peer));
+		else
+			CloseHandle(peer);
 }
 
 void sab::IoContext::Dispose()
 {
 	if (state != State::Destroyed) {
 		LogDebug(L"terminating connection: ", handle);
-		if (isSocket) {
+		if (isSocket)
 			closesocket(reinterpret_cast<SOCKET>(handle));
-		}
 		else
-		{
 			CloseHandle(handle);
-		}
 		handle = INVALID_HANDLE_VALUE;
+		if (peer != INVALID_HANDLE_VALUE)
+		{
+			LogDebug(L"terminating peer: ", peer);
+			if (peerIsSocket)
+				closesocket(reinterpret_cast<SOCKET>(peer));
+			else
+				CloseHandle(peer);
+		}
 	}
 	state = State::Destroyed;
 	if (!holdFlag)
@@ -194,7 +212,7 @@ void sab::IocpListenerConnectionManager::IocpThreadProc()
 	IoContext* context;
 
 	LogDebug(L"started iocp thread");
-	
+
 	while (WaitForSingleObject(cancelEvent, 0) != WAIT_OBJECT_0)
 	{
 		overlapped = nullptr;
@@ -235,7 +253,7 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 	uint32_t beLength;
 	int writeLength;
 	int readLength;
-	IIocpListener* iocpListener;
+	IManagedListener* iocpListener;
 
 	if (!noRealIo && (GetOverlappedResult(context->handle, &context->overlapped,
 		&transferred, FALSE) == FALSE))
@@ -248,7 +266,7 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 	switch (context->state)
 	{
 	case IoContext::State::Handshake:
-		iocpListener = dynamic_cast<IIocpListener*>(context->listener.get());
+		iocpListener = dynamic_cast<IManagedListener*>(context->listener.get());
 		assert(iocpListener != nullptr);
 		if (!iocpListener->DoHandshake(context, transferred))return;
 	case IoContext::State::Ready:
@@ -415,4 +433,23 @@ void sab::IocpListenerConnectionManager::PostMessageReply(std::shared_ptr<void> 
 	}
 }
 
-
+static SOCKET DuplicateSocket(SOCKET s)
+{
+	WSAPROTOCOL_INFOW info;
+	SOCKET ret;
+	int r;
+	r = WSADuplicateSocketW(s, GetCurrentProcessId(), &info);
+	if (r != 0)
+	{
+		LogError(L"cannot duplicated socket! ", LogWSALastError);
+		return INVALID_SOCKET;
+	}
+	ret = WSASocketW(info.iAddressFamily, info.iSocketType, info.iProtocol,
+		&info, 0, WSA_FLAG_OVERLAPPED);
+	if (ret == INVALID_SOCKET)
+	{
+		LogError(L"cannot create new socket! ", LogWSALastError);
+		return INVALID_SOCKET;
+	}
+	return ret;
+}
