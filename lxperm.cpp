@@ -6,11 +6,14 @@
 #include <vector>
 #include <memory>
 #include <tuple>
+#include <new>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <winternl.h>
 #include <sys/stat.h>
+
+#undef max
 
 // declare structs and functions to manipulate Lx Attributes
 constexpr int FileStatInformation = 68;
@@ -115,47 +118,49 @@ class EaInfoBuilder
 public:
 	static constexpr size_t ALIGN = alignof(LONG);
 private:
-	std::vector<char> buffer;
-	ptrdiff_t last = -1;
+	struct EaInfo
+	{
+		BYTE flags;
+		std::string name;
+		std::string value;
+	};
+	std::vector<EaInfo> eaInfos;
 public:
 	void EmitEa(BYTE flags, const std::string& name, const std::string& value)
 	{
-		if (last != -1)
-		{
-			FILE_FULL_EA_INFORMATION& info = *reinterpret_cast<PFILE_FULL_EA_INFORMATION>(buffer.data() + last);
-			info.NextEntryOffset = static_cast<ULONG>(buffer.size() - last);
-		}
-		last = buffer.size();
-		buffer.resize(buffer.size() + sizeof(FILE_FULL_EA_INFORMATION) - 1);
-		FILE_FULL_EA_INFORMATION& info = *reinterpret_cast<PFILE_FULL_EA_INFORMATION>(buffer.data() + last);
-		info.Flags = flags;
-		info.EaNameLength = static_cast<BYTE>(name.size());
-		info.EaValueLength = static_cast<USHORT>(value.size());
-		for (auto ch : name)
-			buffer.push_back(ch);
-		buffer.push_back('\0');
-		for (auto ch : value)
-			buffer.push_back(ch);
-		while (buffer.size() % ALIGN)
-			buffer.push_back(0);
+		eaInfos.emplace_back(EaInfo{ flags, name, value });
 	}
 	std::tuple<std::unique_ptr<char[]>, void*, size_t> FinishEaList()
 	{
 		std::tuple<std::unique_ptr<char[]>, void*, size_t> ret;
-		if (last != -1)
+		size_t maxSize = 0;
+		for (auto& ea : eaInfos)
 		{
-			FILE_FULL_EA_INFORMATION& info = *reinterpret_cast<PFILE_FULL_EA_INFORMATION>(buffer.data() + last);
-			info.NextEntryOffset = 0;
+			maxSize = std::max(maxSize, sizeof(FILE_FULL_EA_INFORMATION) +
+				ea.name.size() + ea.value.size());
 		}
-		std::get<0>(ret) = std::unique_ptr<char[]>(new char[buffer.size() + ALIGN]);
-		char* aligned = std::get<0>(ret).get();
-		while (reinterpret_cast<size_t>(aligned) % ALIGN)
-			++aligned;
-		memcpy(aligned, buffer.data(), buffer.size());
-		std::get<1>(ret) = aligned;
-		std::get<2>(ret) = buffer.size();
-		buffer.resize(0);
-		buffer.shrink_to_fit();
+		while (maxSize % ALIGN)
+			++maxSize;
+		size_t bufferSize = maxSize * eaInfos.size();
+		size_t allocatedSize = bufferSize + ALIGN;
+		std::get<0>(ret) = std::make_unique<char[]>(allocatedSize);
+		char* base = std::get<0>(ret).get();
+		while (reinterpret_cast<size_t>(base) % ALIGN)
+			++base;
+		for (size_t i = 0; i < eaInfos.size(); ++i)
+		{
+			char* instBase = base + i * maxSize;
+			new(reinterpret_cast<void*>(instBase)) FILE_FULL_EA_INFORMATION;
+			auto info = reinterpret_cast<PFILE_FULL_EA_INFORMATION>(instBase);
+			info->NextEntryOffset = (i == eaInfos.size() - 1 ? 0 : static_cast<ULONG>(maxSize));
+			info->Flags = eaInfos[i].flags;
+			info->EaNameLength = static_cast<BYTE>(eaInfos[i].name.size());
+			info->EaValueLength = static_cast<USHORT>(eaInfos[i].value.size());
+			memcpy(info->EaName, eaInfos[i].name.c_str(), eaInfos[i].name.size() + 1);
+			memcpy(info->EaName + eaInfos[i].name.size() + 1, eaInfos[i].value.c_str(), eaInfos[i].value.size());
+		}
+		std::get<1>(ret) = base;
+		std::get<2>(ret) = bufferSize;
 		return ret;
 	}
 };
