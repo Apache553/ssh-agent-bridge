@@ -6,6 +6,7 @@ PROJECT(ssh-agent-bridge)
 SET(HEADERS
 	"protocol_connection_manager.h"
 	"protocol_iocp_connection_manager.h"
+	"protocol_forward_gpg4win_connection_manager.h"
 	"protocol_listener_base.h" 
 	"protocol_listener_win32_namedpipe.h" 
 	"protocol_listener_unix_domain.h"
@@ -30,6 +31,7 @@ SET(HEADERS
 SET(SOURCES
 	"main.cpp"
 	"protocol_iocp_connection_manager.cpp"
+	"protocol_forward_gpg4win_connection_manager.cpp"
 	"protocol_listener_base.cpp"
 	"protocol_listener_win32_namedpipe.cpp"
 	"protocol_listener_unix_domain.cpp"

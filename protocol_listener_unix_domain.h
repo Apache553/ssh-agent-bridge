@@ -15,7 +15,7 @@ namespace sab
 
 		HANDLE cancelEvent = NULL;
 
-		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
+		std::shared_ptr<IConnectionManager> connectionManager;
 
 		bool permissionCheckFlag;
 		bool writeWslMetadataFlag;
@@ -23,7 +23,7 @@ namespace sab
 		LxPermissionInfo perm;
 	public:
 		UnixDomainSocketListener(const std::wstring& socketPath,
-			std::shared_ptr<IocpListenerConnectionManager> manager,
+			std::shared_ptr<IConnectionManager> manager,
 			bool permissionCheckFlag,
 			bool writeWslMetadataFlag,
 			const LxPermissionInfo& perm);

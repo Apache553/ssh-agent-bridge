@@ -12,8 +12,6 @@
 #include <thread>
 #include <functional>
 
-
-
 namespace sab
 {
 
@@ -123,19 +121,6 @@ namespace sab
 		/// <param name="status">operation status</param>
 		void PostMessageReply(std::shared_ptr<void> genericContext,
 			SshMessageEnvelope* message, bool status);
-	};
-	
-	class IManagedListener
-	{
-	public:
-		/// <summary>
-		/// do handshake
-		/// </summary>
-		/// <param name="context">the io context</param>
-		/// <returns>true for completed handshake, else false</returns>
-		virtual bool DoHandshake(std::shared_ptr<IoContext> context, int transferred) = 0;
-
-		virtual ~IManagedListener() = default;
 	};
 
 }

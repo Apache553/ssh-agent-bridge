@@ -6,6 +6,9 @@
 #include <list>
 #include <memory>
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 namespace sab
 {
 	static constexpr size_t MAX_BUFFER_SIZE = 4 * 1024;
@@ -85,19 +88,9 @@ namespace sab
 		HANDLE handle;
 
 		/// <summary>
-		/// peer handle
-		/// </summary>
-		HANDLE peer;
-
-		/// <summary>
 		/// set to true if it is a socket
 		/// </summary>
 		bool isSocket;
-
-		/// <summary>
-		/// peer is a socket or not
-		/// </summary>
-		bool peerIsSocket;
 
 		/// <summary>
 		/// OVERLAPPED structure for iocp
@@ -236,5 +229,18 @@ namespace sab
 		/// make IoContext our friend
 		/// </summary>
 		friend class IoContext;
+	};
+
+	class IManagedListener
+	{
+	public:
+		/// <summary>
+		/// do handshake
+		/// </summary>
+		/// <param name="context">the io context</param>
+		/// <returns>true for completed handshake, else false</returns>
+		virtual bool DoHandshake(std::shared_ptr<IoContext> context, int transferred) = 0;
+
+		virtual ~IManagedListener() = default;
 	};
 }

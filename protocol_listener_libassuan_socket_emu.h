@@ -20,7 +20,7 @@ namespace sab
 		
 		HANDLE cancelEvent = NULL;
 
-		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
+		std::shared_ptr<IConnectionManager> connectionManager;
 
 		bool permissionCheckFlag;
 		bool writeWslMetadataFlag;
@@ -28,7 +28,7 @@ namespace sab
 	public:
 		LibassuanSocketEmulationListener(const std::wstring& socketPath,
 			const std::wstring& listenAddress,
-			std::shared_ptr<IocpListenerConnectionManager> manager,
+			std::shared_ptr<IConnectionManager> manager,
 			bool permissionCheckFlag,
 			bool writeWslMetadataFlag,
 			const LxPermissionInfo& perm);

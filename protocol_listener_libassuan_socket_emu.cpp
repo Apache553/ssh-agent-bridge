@@ -28,7 +28,7 @@ namespace sab
 sab::LibassuanSocketEmulationListener::LibassuanSocketEmulationListener(
 	const std::wstring& socketPath,
 	const std::wstring& listenAddress,
-	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<IConnectionManager> manager,
 	bool permissionCheckFlag,
 	bool writeWslMetadataFlag,
 	const LxPermissionInfo& perm)

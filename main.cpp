@@ -55,7 +55,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		LogError(L"no config file!");
 		return 1;
 	}
-	LogDebug(L"using config from ", options.configPath);
+	LogInfo(L"using config from ", options.configPath);
 
 	WORD versionRequested = MAKEWORD(2, 2);
 	WSADATA wsaData;

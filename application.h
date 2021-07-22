@@ -4,6 +4,7 @@
 #include "ini_parse.h"
 #include "protocol_listener_base.h"
 #include "protocol_iocp_connection_manager.h"
+#include "protocol_forward_gpg4win_connection_manager.h"
 #include "protocol_client_base.h"
 #include "message_dispatcher.h"
 
@@ -16,6 +17,7 @@ namespace sab
 	private:
 		std::vector<std::shared_ptr<ProtocolListenerBase>> listeners;
 		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
+		std::shared_ptr<Gpg4WinForwardConnectionManager> gpgConnectionManager;
 		std::shared_ptr<ProtocolClientBase> client;
 		std::shared_ptr<MessageDispatcher> dispatcher;
 
@@ -44,19 +46,16 @@ namespace sab
 	};
 
 	std::shared_ptr<ProtocolListenerBase> SetupWsl2Listener(const IniSection& section,
-		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<IConnectionManager> manager,
 		std::shared_ptr<MessageDispatcher> dispatcher);
 	std::shared_ptr<ProtocolListenerBase> SetupNamedPipeListener(const IniSection& section,
-		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<IConnectionManager> manager,
 		std::shared_ptr<MessageDispatcher> dispatcher);
 	std::shared_ptr<ProtocolListenerBase> SetupPageantListener(const IniSection& section,
-		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<IConnectionManager> manager,
 		std::shared_ptr<MessageDispatcher> dispatcher);
 	std::shared_ptr<ProtocolListenerBase> SetupUnixListener(const IniSection& section,
-		std::shared_ptr<IocpListenerConnectionManager> manager,
-		std::shared_ptr<MessageDispatcher> dispatcher);
-	std::shared_ptr<ProtocolListenerBase> SetupAssuanForwarder(const IniSection& section,
-		std::shared_ptr<IocpListenerConnectionManager> manager,
+		std::shared_ptr<IConnectionManager> manager,
 		std::shared_ptr<MessageDispatcher> dispatcher);
 
 	std::shared_ptr<ProtocolClientBase> SetupPageantClient(const IniSection& section);

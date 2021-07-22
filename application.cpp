@@ -28,7 +28,7 @@ struct TypeAction
 	std::function<
 		std::shared_ptr<sab::ProtocolListenerBase>(
 			const sab::IniSection&,
-			std::shared_ptr<sab::IocpListenerConnectionManager>,
+			std::shared_ptr<sab::IConnectionManager>,
 			std::shared_ptr<sab::MessageDispatcher>
 			)
 	> createListener;
@@ -44,7 +44,6 @@ static TypeAction actionList[] = {
 	{L"pageant", sab::SetupPageantListener, sab::SetupPageantClient },
 	{L"wsl2", sab::SetupWsl2Listener },
 	{L"unix", sab::SetupUnixListener },
-	{L"assuan", sab::SetupAssuanForwarder }
 };
 
 static bool GetLxPermissionInfo(const sab::IniSection& section, sab::LxPermissionInfo& perm)
@@ -90,10 +89,9 @@ sab::Application::~Application()
 
 bool sab::Application::Initialize(const IniFile& config)
 {
-	std::vector<std::wstring> nameList;
-
 	// do init
 	connectionManager = std::make_shared<IocpListenerConnectionManager>();
+	gpgConnectionManager = std::make_shared<Gpg4WinForwardConnectionManager>();
 	dispatcher = std::make_shared<MessageDispatcher>();
 	connectionManager->SetEmitMessageCallback([=](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
 		{
@@ -102,6 +100,11 @@ bool sab::Application::Initialize(const IniFile& config)
 	if (!connectionManager->Initialize())
 	{
 		LogError(L"cannot initialize connection manager");
+		return false;
+	}
+	if (!gpgConnectionManager->Initialize())
+	{
+		LogError(L"cannot initialize gpg connection manager");
 		return false;
 	}
 
@@ -147,13 +150,6 @@ bool sab::Application::Initialize(const IniFile& config)
 				if (type.first == actionList[i].name)
 				{
 					findFlag = true;
-					auto existIter = std::find(nameList.begin(), nameList.end(), type.first);
-					if (existIter != nameList.end() && type.first != L"assuan")
-					{
-						LogError(L"type \"", type.first, L"\" cannot be set more than once!");
-						return false;
-					}
-					nameList.push_back(type.first);
 					if (role.first == L"listener")
 					{
 						if (!actionList[i].createListener)
@@ -161,7 +157,22 @@ bool sab::Application::Initialize(const IniFile& config)
 							LogError(L"type \"", type.first, L"\" does not support role \"", role.first, L"\"");
 							return false;
 						}
-						auto ptr = actionList[i].createListener(section, connectionManager, dispatcher);
+						// check gpg forward
+						auto targetPath = GetPropertyString(section, L"forward-socket-path");
+						std::shared_ptr<ProtocolListenerBase> ptr;
+						if (targetPath.second && (type.first == L"unix" || type.first == L"wsl2"))
+						{
+							ptr = actionList[i].createListener(section, gpgConnectionManager, dispatcher);
+							auto targetPathEx = ReplaceEnvironmentVariables(targetPath.first);
+							if (ptr) {
+								gpgConnectionManager->SetTarget(ptr, targetPathEx);
+								auto sockPath = GetPropertyString(section, L"path");
+								LogDebug(L"\"", targetPathEx, L"\" <-> \"", ReplaceEnvironmentVariables(sockPath.first), L"\"");
+							}
+						}
+						else {
+							ptr = actionList[i].createListener(section, connectionManager, dispatcher);
+						}
 						if (ptr == nullptr)
 						{
 							LogError(L"cannot create listener, check your config!");
@@ -223,6 +234,7 @@ int sab::Application::Run()
 		return 1;
 
 	connectionManager->Start();
+	gpgConnectionManager->Start();
 
 	std::vector<std::thread> listenThreads;
 	for (auto& l : listeners)
@@ -256,7 +268,7 @@ int sab::Application::Run()
 			l.join();
 	}
 	connectionManager->Stop();
-
+	gpgConnectionManager->Stop();
 	return 0;
 }
 
@@ -330,7 +342,7 @@ void __stdcall sab::Application::ServiceControlHandler(DWORD dwControl)
 
 std::shared_ptr<sab::ProtocolListenerBase> sab::SetupWsl2Listener(
 	const IniSection& section,
-	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<IConnectionManager> manager,
 	std::shared_ptr<MessageDispatcher> dispatcher)
 {
 	auto socketPath = GetPropertyString(section, L"path");
@@ -367,7 +379,7 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::SetupWsl2Listener(
 
 std::shared_ptr<sab::ProtocolListenerBase> sab::SetupNamedPipeListener(
 	const IniSection& section,
-	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<IConnectionManager> manager,
 	std::shared_ptr<MessageDispatcher> dispatcher)
 {
 	auto socketPath = GetPropertyString(section, L"path");
@@ -390,7 +402,7 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::SetupNamedPipeListener(
 
 std::shared_ptr<sab::ProtocolListenerBase> sab::SetupPageantListener(
 	const IniSection& section,
-	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<IConnectionManager> manager,
 	std::shared_ptr<MessageDispatcher> dispatcher)
 {
 	auto enablePermissionCheck = GetPropertyBoolean(section, L"enable-permission-check");
@@ -413,14 +425,14 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::SetupPageantListener(
 				dispatcher->PostRequest(msg, std::move(holdKey));
 			});
 	}
-	
+
 	return ptr;
 
 }
 
 std::shared_ptr<sab::ProtocolListenerBase> sab::SetupUnixListener(
 	const IniSection& section,
-	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<IConnectionManager> manager,
 	std::shared_ptr<MessageDispatcher> dispatcher)
 {
 	auto socketPath = GetPropertyString(section, L"path");
@@ -448,15 +460,6 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::SetupUnixListener(
 		enablePermissionCheck.first,
 		writeMetadata.first,
 		perm);
-}
-
-std::shared_ptr<sab::ProtocolListenerBase> sab::SetupAssuanForwarder(
-	const IniSection& section,
-	std::shared_ptr<IocpListenerConnectionManager> manager,
-	std::shared_ptr<MessageDispatcher> dispatcher)
-{
-	// TODO
-	return nullptr;
 }
 
 std::shared_ptr<sab::ProtocolClientBase> sab::SetupPageantClient(const IniSection& section)

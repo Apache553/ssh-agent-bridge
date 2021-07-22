@@ -11,7 +11,7 @@
 
 sab::Win32NamedPipeListener::Win32NamedPipeListener(
 	const std::wstring& pipePath,
-	std::shared_ptr<IocpListenerConnectionManager> manager,
+	std::shared_ptr<IConnectionManager> manager,
 	bool permissionCheckFlag)
 	:pipePath(pipePath), connectionManager(manager),
 	permissionCheckFlag(permissionCheckFlag)

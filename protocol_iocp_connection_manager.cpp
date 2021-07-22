@@ -38,11 +38,12 @@ static constexpr const wchar_t* IoContextStateToString(sab::IoContext::State sta
 }
 
 sab::IoContext::IoContext()
-	:handle(INVALID_HANDLE_VALUE), peer(INVALID_HANDLE_VALUE), state(State::Initialized),
+	:handle(INVALID_HANDLE_VALUE), state(State::Initialized),
 	ioDataOffest(0), ioBufferOffest(0), ioNeedBytes(0),
-	holdFlag(false), isSocket(false), peerIsSocket(false)
+	holdFlag(false), isSocket(false)
 {
 	memset(&overlapped, 0, sizeof(OVERLAPPED));
+	LogDebug(L"created io context: ", this);
 }
 
 sab::IoContext::~IoContext()
@@ -52,12 +53,7 @@ sab::IoContext::~IoContext()
 			closesocket(reinterpret_cast<SOCKET>(handle));
 		else
 			CloseHandle(handle);
-
-	if (peer != INVALID_HANDLE_VALUE)
-		if (peerIsSocket)
-			closesocket(reinterpret_cast<SOCKET>(peer));
-		else
-			CloseHandle(peer);
+	LogDebug(L"destruct io context:", this);
 }
 
 void sab::IoContext::Dispose()
@@ -69,14 +65,6 @@ void sab::IoContext::Dispose()
 		else
 			CloseHandle(handle);
 		handle = INVALID_HANDLE_VALUE;
-		if (peer != INVALID_HANDLE_VALUE)
-		{
-			LogDebug(L"terminating peer: ", peer);
-			if (peerIsSocket)
-				closesocket(reinterpret_cast<SOCKET>(peer));
-			else
-				CloseHandle(peer);
-		}
 	}
 	state = State::Destroyed;
 	if (!holdFlag)
@@ -253,7 +241,7 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 	uint32_t beLength;
 	int writeLength;
 	int readLength;
-	IManagedListener* iocpListener;
+	IManagedListener* managedListener;
 
 	if (!noRealIo && (GetOverlappedResult(context->handle, &context->overlapped,
 		&transferred, FALSE) == FALSE))
@@ -266,9 +254,9 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 	switch (context->state)
 	{
 	case IoContext::State::Handshake:
-		iocpListener = dynamic_cast<IManagedListener*>(context->listener.get());
-		assert(iocpListener != nullptr);
-		if (!iocpListener->DoHandshake(context, transferred))return;
+		managedListener = dynamic_cast<IManagedListener*>(context->listener.get());
+		assert(managedListener != nullptr);
+		if (!managedListener->DoHandshake(context, transferred))return;
 	case IoContext::State::Ready:
 		context->state = IoContext::State::ReadHeader;
 		context->ioNeedBytes = HEADER_SIZE;
