@@ -64,6 +64,7 @@ bool sab::Gpg4WinForwardConnectionManager::DelegateConnection(HANDLE connection,
 				if (WaitForSingleObject(eventHandle, 5000) != WAIT_OBJECT_0)
 				{
 					// TIMED OUT
+					LogError(L"handshake timed out!");
 					return;
 				}
 				if (GetOverlappedResult(context->handle, &context->overlapped, &transferred, FALSE) == FALSE)
