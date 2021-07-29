@@ -1,7 +1,7 @@
 
-#include "log.h"
-#include "util.h"
-#include "protocol_connector_libassuan_socket_emu.h"
+#include "../../log.h"
+#include "../../util.h"
+#include "connector.h"
 
 #include <fstream>
 #include <WS2tcpip.h>

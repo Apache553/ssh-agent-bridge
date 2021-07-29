@@ -1,7 +1,7 @@
 
-#include "log.h"
-#include "util.h"
-#include "protocol_listener_win32_namedpipe.h"
+#include "../../log.h"
+#include "../../util.h"
+#include "listener.h"
 
 #include <cstring>
 #include <thread>

@@ -1,6 +1,7 @@
-#include "log.h"
-#include "util.h"
-#include "protocol_listener_libassuan_socket_emu.h"
+
+#include "../../log.h"
+#include "../../util.h"
+#include "listener.h"
 
 #include <cassert>
 

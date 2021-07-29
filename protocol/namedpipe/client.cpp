@@ -1,7 +1,8 @@
-#include "log.h"
-#include "util.h"
-#include "protocol_client_win32_namedpipe.h"
-#include "protocol_connector_win32_namedpipe.h"
+
+#include "../../log.h"
+#include "../../util.h"
+#include "client.h"
+#include "connector.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>

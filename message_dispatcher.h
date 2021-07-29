@@ -1,8 +1,8 @@
 
 #pragma once
 
-#include "protocol_ssh_helper.h"
-#include "protocol_client_base.h"
+#include "protocol/protocol_ssh_helper.h"
+#include "protocol/client_base.h"
 
 #include <vector>
 #include <condition_variable>

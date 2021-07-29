@@ -2,10 +2,10 @@
 #pragma once
 
 #include "ini_parse.h"
-#include "protocol_listener_base.h"
-#include "protocol_iocp_connection_manager.h"
-#include "protocol_forward_gpg4win_connection_manager.h"
-#include "protocol_client_base.h"
+#include "protocol/listener_base.h"
+#include "protocol/connection_manager/proxy.h"
+#include "protocol/connection_manager/forwarding.h"
+#include "protocol/client_base.h"
 #include "message_dispatcher.h"
 
 #include <memory>

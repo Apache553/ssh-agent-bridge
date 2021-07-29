@@ -1,7 +1,7 @@
 
-#include "log.h"
-#include "util.h"
-#include "protocol_client_pageant.h"
+#include "../../log.h"
+#include "../../util.h"
+#include "client.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>

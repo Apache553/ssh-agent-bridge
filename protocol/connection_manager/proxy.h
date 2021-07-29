@@ -1,9 +1,9 @@
 
 #pragma once
 
-#include "protocol_ssh_helper.h"
-#include "protocol_listener_base.h"
-#include "protocol_connection_manager.h"
+#include "../protocol_ssh_helper.h"
+#include "../listener_base.h"
+#include "../connection_manager.h"
 
 #include <atomic>
 #include <memory>

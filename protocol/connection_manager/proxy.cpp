@@ -1,9 +1,9 @@
 
-#include "log.h"
-#include "util.h"
-#include "protocol_iocp_connection_manager.h"
-#include "protocol_connector_libassuan_socket_emu.h"
-#include "protocol_connector_win32_namedpipe.h"
+#include "../../log.h"
+#include "../../util.h"
+#include "proxy.h"
+#include "../libassuan_socket_emulation/connector.h"
+#include "../namedpipe/connector.h"
 
 #include <cassert>
 

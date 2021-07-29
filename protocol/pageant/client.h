@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "protocol_client_base.h"
+#include "../client_base.h"
 
 namespace sab
 {

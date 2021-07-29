@@ -1,7 +1,7 @@
 
-#include "log.h"
-#include "util.h"
-#include "protocol_connector_win32_namedpipe.h"
+#include "../../log.h"
+#include "../../util.h"
+#include "connector.h"
 
 bool sab::WriteBufferToPipe(HANDLE handle, const void* buffer, DWORD length)
 {

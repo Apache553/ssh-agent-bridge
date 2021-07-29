@@ -1,8 +1,8 @@
 
-#include "log.h"
-#include "util.h"
-#include "protocol_client_libassuan_socket_emu.h"
-#include "protocol_connector_libassuan_socket_emu.h"
+#include "../../log.h"
+#include "../../util.h"
+#include "client.h"
+#include "connector.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>

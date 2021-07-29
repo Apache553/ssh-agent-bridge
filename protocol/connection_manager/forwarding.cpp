@@ -1,8 +1,9 @@
 
-#include "log.h"
-#include "util.h"
-#include "protocol_forward_gpg4win_connection_manager.h"
-#include "protocol_connector_libassuan_socket_emu.h"
+
+#include "../../log.h"
+#include "../../util.h"
+#include "forwarding.h"
+#include "../libassuan_socket_emulation/connector.h"
 
 #include <thread>
 
