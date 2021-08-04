@@ -159,19 +159,20 @@ void sab::Logger::SetLogOutputLevel(LogLevel level)
 	LogInfo(L"set log level: ", TranslateLogLevel(level));
 }
 
-sab::Logger& sab::Logger::GetInstance(bool isDebug)noexcept
+sab::Logger& sab::Logger::GetInstance(bool isDebug, bool allocConsole)noexcept
 {
-	static Logger instance(isDebug);
+	static Logger instance(isDebug, allocConsole);
 	return instance;
 }
 
-sab::Logger::Logger(bool isDebug)noexcept
+sab::Logger::Logger(bool isDebug, bool allocConsole)noexcept
 	:stdinStream(nullptr), stdoutStream(nullptr), stderrStream(nullptr),
-	allocatedConsole(isDebug), outputLevel(LogLevel::Info)
+	outputLevel(LogLevel::Info)
 {
 	std::setlocale(LC_ALL, ".utf8");
 
-	if (isDebug)
+	debugOutput = isDebug;
+	if (allocConsole)
 	{
 		allocatedConsole = PrepareConsole();
 	}

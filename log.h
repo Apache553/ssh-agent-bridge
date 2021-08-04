@@ -31,7 +31,7 @@ namespace sab
 		std::wofstream fileStream;
 		bool PrepareFileLog();
 		void FreeFileLog();
-		
+
 		std::mutex ioMutex;
 
 		LogLevel outputLevel;
@@ -41,7 +41,7 @@ namespace sab
 		void WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 			const std::wstring& str)noexcept;
 
-		Logger(bool createConsole)noexcept;
+		Logger(bool isDebug, bool allocConsole)noexcept;
 		~Logger()noexcept;
 	public:
 		template<typename ...Args>
@@ -58,7 +58,7 @@ namespace sab
 		void SetLogOutputLevel(LogLevel level);
 		LogLevel GetLogOutputLevel()const { return outputLevel; }
 
-		static Logger& GetInstance(bool isDebug = false)noexcept;
+		static Logger& GetInstance(bool isDebug = false, bool allocConsole = false)noexcept;
 	};
 }
 

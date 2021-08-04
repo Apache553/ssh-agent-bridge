@@ -15,6 +15,7 @@ namespace sab
 		
 		Logger::LogLevel logLevel = Logger::LogLevel::Invalid;
 		bool isDebug = false;
+		bool allocConosle = false;
 		bool isService = false;
 		bool isIntallService = false;
 		bool isUninstallService = false;

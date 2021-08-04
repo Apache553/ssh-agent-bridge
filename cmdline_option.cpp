@@ -34,6 +34,10 @@ sab::CommandLineOption sab::ExtractCommandLineOption(const std::vector<std::wstr
 		{
 			ret.isDebug = true;
 		}
+		else if(EqualStringIgnoreCase(cur,L"/Console"))
+		{
+			ret.allocConosle = true;
+		}
 		else if (EqualStringIgnoreCase(cur, L"/Config"))
 		{
 			if (i + 1 >= args.size())

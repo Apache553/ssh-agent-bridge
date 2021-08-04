@@ -14,7 +14,6 @@
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	PWSTR pCmdLine, int nCmdShow)
 {
-	// MessageBoxW(NULL, L"attach debugger", L"info", MB_OK);
 	sab::CommandLineOption options =
 		sab::ExtractCommandLineOption(
 			sab::SplitCommandLine(
@@ -23,7 +22,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	if (!options.isGood)
 		return 1;
 
-	sab::Logger::GetInstance(options.isDebug);
+	sab::Logger::GetInstance(options.isDebug, options.allocConosle);
 
 	if (options.logLevel == sab::Logger::LogLevel::Invalid)
 		options.logLevel = sab::Logger::LogLevel::Info;
