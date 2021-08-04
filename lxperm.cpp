@@ -126,6 +126,10 @@ private:
 	};
 	std::vector<EaInfo> eaInfos;
 public:
+	size_t Count()const
+	{
+		return eaInfos.size();
+	}
 	void EmitEa(BYTE flags, const std::string& name, const std::string& value)
 	{
 		eaInfos.emplace_back(EaInfo{ flags, name, value });
@@ -263,6 +267,9 @@ bool sab::SetLxPermissionByHandle(HANDLE fileHandle, const LxPermissionInfo& per
 	if (perm.gid >= 0)builder.EmitEa(0, "$LXGID", MakeByteString<ULONG>(perm.gid));
 	if (perm.mode >= 0)builder.EmitEa(0, "$LXMOD", MakeByteString<ULONG>(realMode));
 	auto rr = builder.FinishEaList();
+
+	if (builder.Count() == 0)
+		return true;
 
 	r = NtSetEaFile(fileHandle, &ioStatus, std::get<1>(rr),
 		static_cast<ULONG>(std::get<2>(rr)));

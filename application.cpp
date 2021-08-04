@@ -52,15 +52,15 @@ static bool GetLxPermissionInfo(const sab::IniSection& section, sab::LxPermissio
 	try {
 		fieldName = L"metadata-uid";
 		auto str = sab::GetPropertyString(section, fieldName);
-		if (str.second)
+		if (str.second && !str.first.empty())
 			perm.uid = std::stoi(str.first, nullptr, 0);
 		fieldName = L"metadata-gid";
 		str = sab::GetPropertyString(section, fieldName);
-		if (str.second)
+		if (str.second && !str.first.empty())
 			perm.gid = std::stoi(str.first, nullptr, 0);
 		fieldName = L"metadata-mode";
 		str = sab::GetPropertyString(section, fieldName);
-		if (str.second)
+		if (str.second && !str.first.empty())
 			perm.mode = std::stoi(str.first, nullptr, 0);
 	}
 	catch (std::invalid_argument)
@@ -244,7 +244,8 @@ int sab::Application::Run()
 				if (!l->Run())
 				{
 					ServiceSupport::GetInstance().ReportStatus(SERVICE_STOPPED, 1);
-					exit(1);
+					LogError(L"cannot start listener!");
+					abort();
 				}
 			});
 	}
