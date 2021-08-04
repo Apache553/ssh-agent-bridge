@@ -68,6 +68,7 @@ std::string pidFilePath;
 bool backgroundRunning = false;
 bool refcountFlag = false;
 bool shouldDeleteSocket = false;
+bool deleteExistSocket = false;
 
 pid_t waitingPid;
 
@@ -83,6 +84,7 @@ int main(int argc, char** argv)
 			"\t-l local\n\t\tsocket path in wsl environment. generated randomly if not specified, path written to stdout\n" <<
 			"\t-r remote\n\t\tsocket file under windows(wsl path style)\n" <<
 			"\t-a remoteAddress\n\t\twindows host ip, deduced from default route if not specified\n" <<
+			"\t-d\n\t\tdelete local socket file if exists\n" <<
 			"\t-b\n\t\tfork to background\n" <<
 			"\t-p pidFile\n\t\twrite main process pid to file, if process in the file is alive, this process will not do listening\n" <<
 			"\t-c\n\t\tenable refcount, increase refcount when started, decrease refcount when parent process exit\n"
@@ -252,7 +254,7 @@ int main(int argc, char** argv)
 	}
 
 	SetThreadName("Main");
-	
+
 	std::atexit(DeleteSocket);
 
 	// prepare listen socket
@@ -279,6 +281,11 @@ int PrepareListener()
 		return -1;
 	}
 
+	if(deleteExistSocket)
+	{
+		remove(localSocketPath.c_str());
+	}
+	
 	sockaddr_un socketAddress;
 	std::memset(&socketAddress, 0, sizeof(socketAddress));
 	socketAddress.sun_family = AF_UNIX;
@@ -577,6 +584,11 @@ bool ParseCommandLine(int argc, char** argv)
 			target = &remoteAddress;
 		else if (option == "-p")
 			target = &pidFilePath;
+		else if(option == "-d")
+		{
+			deleteExistSocket = true;
+			continue;
+		}
 		else if (option == "-b")
 		{
 			backgroundRunning = true;
