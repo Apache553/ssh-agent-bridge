@@ -16,7 +16,7 @@ namespace sab
 	{
 	private:
 		std::vector<std::shared_ptr<ProtocolListenerBase>> listeners;
-		std::shared_ptr<IocpListenerConnectionManager> connectionManager;
+		std::shared_ptr<ProxyConnectionManager> connectionManager;
 		std::shared_ptr<Gpg4WinForwardConnectionManager> gpgConnectionManager;
 		std::shared_ptr<ProtocolClientBase> client;
 		std::shared_ptr<MessageDispatcher> dispatcher;

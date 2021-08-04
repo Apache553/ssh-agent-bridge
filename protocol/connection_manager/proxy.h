@@ -15,112 +15,158 @@
 namespace sab
 {
 
-	class IocpListenerConnectionManager
+	class ProxyIoContext
+		:public IoContext
+	{
+	public:
+		enum class State
+		{
+			Initialized = 0,
+			Handshake,
+			Ready,
+			ReadHeader,
+			ReadBody,
+			WaitReply,
+			WriteReply,
+			Destroyed,
+		};
+		/*
+		 * Normal Message:
+		 * Initialized -> Handshake -> Ready -> ReadHeader -> ReadBody -> WaitReply -> WriteReply
+		 *                               A                                                 |
+		 *                               +-------------------------------------------------+
+		 * Any state can go `Destroyed` when exception occurred/connection closes
+		 */
+	public:
+		/**
+		 * @brief OVERLAPPED structure for async i/o
+		 */
+		OVERLAPPED overlapped;
+		
+		/**
+		 * @brief current state
+		 */
+		State state;
+
+		/**
+		 * @brief ssh agent message
+ 		 */
+		SshMessageEnvelope message;
+
+		/**
+		 * @brief offset in agent message
+	  	 */
+		int ioDataOffset;
+
+		/**
+		 * @brief offset in buffer
+		 */
+		int ioBufferOffset;
+
+		/**
+		 * @brief remaining bytes to complete the transaction
+		 */
+		int ioNeedBytes;
+
+		/**
+		 * @brief buffer
+		 */
+		char ioBuffer[MAX_BUFFER_SIZE];
+	public:
+		ProxyIoContext();
+
+		~ProxyIoContext();
+		
+		void Dispose()override;
+	};
+	
+	class ProxyConnectionManager
 		:public IConnectionManager
 	{
 	private:
-		/// <summary>
-		/// event handle to cancel worker thread
-		/// </summary>
-		HANDLE cancelEvent;
+		std::atomic<bool> cancelFlag;
 
-		/// <summary>
-		/// handle of the completion port
-		/// </summary>
+		/**
+		 * @brief completion port handle
+		 */
 		HANDLE iocpHandle;
 
-		/// <summary>
-		/// worker thread
-		/// </summary>
+		/**
+		 * @brief worker thread
+		 */
 		std::thread iocpThread;
 
-		/// <summary>
-		/// list of active connections
-		/// </summary>
+		/**
+		 * @brief list of active connections
+		 */
 		std::list<std::shared_ptr<IoContext>> contextList;
 
-		/// <summary>
-		/// initialie flag
-		/// </summary>
+		/**
+		 * @brief initialized flag
+		 */
 		bool initialized;
 
-		/// <summary>
-		/// mutex to sync access to contextList
-		/// </summary>
+		/**
+		 * @brief synchronize access to list
+		 */
 		std::mutex listMutex;
 
-		/// <summary>
-		/// callback to emit a message
-		/// </summary>
+		/**
+		 * @brief callback to process received message
+		 */
 		std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)> receiveCallback;
 	public:
-		IocpListenerConnectionManager();
+		ProxyConnectionManager();
 
-		~IocpListenerConnectionManager();
+		~ProxyConnectionManager();
 	public:
-		/// <summary>
-		/// actually initialize the manager
-		/// </summary>
-		/// <returns>true for success, false for failure</returns>
+
 		bool Initialize();
 
-		/// <summary>
-		/// start worker thread
-		/// </summary>
-		/// <returns>true for success, false for failure</returns>
-		bool Start();
+		bool Start()override;
 
-		/// <summary>
-		/// stop worker thread (if is running)
-		/// </summary>
-		void Stop();
+		void Stop()override;
 
-		/// <summary>
-		/// delegate a connection which is ready for io to manager
-		/// </summary>
-		/// <param name="connection">connection handle</param>
-		/// <param name="listener">listener instance</param>
-		/// <param name="data">listener specific data</param>
-		/// <returns>true for success, false for failure</returns>
+		/**
+		 * @brief delegate a inbound connection to connection manager for further handling
+		 * @param connection handle of connection
+		 * @param listener listener of connection
+		 * @param data listener specific data
+		 * @param isSocket indicates if the connection is a WSA SOCKET
+		 * @return operation result, true stands for success
+		 */
 		bool DelegateConnection(HANDLE connection,
 			std::shared_ptr<ProtocolListenerBase> listener,
 			std::shared_ptr<ListenerConnectionData> data,
 			bool isSocket)override;
 
-		/// <summary>
-		/// set message handler when received a message
-		/// </summary>
-		/// <param name="callback">the callback function</param>
+		/**
+		 * @brief set callback which will be called when a message was received
+		 * @param callback the callback
+		 */
 		void SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback);
 
-	protected:
-		/// <summary>
-		/// remove context from context list
-		/// </summary>
-		/// <param name="context"></param>
+		/**
+		 * @brief remove a connection from connection list
+		 * @param context the context
+		 */
 		void RemoveContext(IoContext* context)override;
 
 	private:
-		/// <summary>
-		/// worker thread function
-		/// </summary>
+		
 		void IocpThreadProc();
 
-		/// <summary>
-		/// actually process io operation
-		/// </summary>
-		/// <param name="context">the context</param>
-		/// <param name="noRealIo">set to true to not get completion status</param>
-		void DoIoCompletion(std::shared_ptr<IoContext> context, bool noRealIo);
+		void DoIoCompletion(std::shared_ptr<ProxyIoContext> context, DWORD transferred);
 
-		/// <summary>
-		/// Helper function for callback
-		/// </summary>
-		/// <param name="weakContext">weak_ptr of IoContext</param>
-		/// <param name="message">the message</param>
-		/// <param name="status">operation status</param>
+		/**
+		 * @brief helper function to send reply to connection initiator
+		 * @param genericContext the context
+		 * @param message the message
+		 * @param status the result of getting reply
+		 */
 		void PostMessageReply(std::shared_ptr<void> genericContext,
 			SshMessageEnvelope* message, bool status);
+	
 	};
 
 }

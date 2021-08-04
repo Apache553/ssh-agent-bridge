@@ -11,9 +11,9 @@
 
 SOCKET DuplicateSocket(SOCKET s);
 
-static constexpr const wchar_t* IoContextStateToString(sab::IoContext::State state)
+static constexpr const wchar_t* IoContextStateToString(sab::ProxyIoContext::State state)
 {
-	using State = sab::IoContext::State;
+	using State = sab::ProxyIoContext::State;
 	switch (state)
 	{
 	case State::Initialized:
@@ -37,79 +37,55 @@ static constexpr const wchar_t* IoContextStateToString(sab::IoContext::State sta
 	}
 }
 
-sab::IoContext::IoContext()
-	:handle(INVALID_HANDLE_VALUE), state(State::Initialized),
-	ioDataOffest(0), ioBufferOffest(0), ioNeedBytes(0),
-	holdFlag(false), isSocket(false)
+sab::ProxyIoContext::ProxyIoContext()
+	:state(State::Initialized),
+	ioDataOffset(0), ioBufferOffset(0)
 {
-	memset(&overlapped, 0, sizeof(OVERLAPPED));
-	LogDebug(L"created io context: ", this);
+	memset(&overlapped, 0, sizeof(overlapped));
 }
 
-sab::IoContext::~IoContext()
+sab::ProxyIoContext::~ProxyIoContext()
 {
-	if (handle != INVALID_HANDLE_VALUE)
-		if (isSocket)
-			closesocket(reinterpret_cast<SOCKET>(handle));
-		else
-			CloseHandle(handle);
-	LogDebug(L"destruct io context:", this);
-}
-
-void sab::IoContext::Dispose()
-{
-	if (state != State::Destroyed) {
-		LogDebug(L"terminating connection: ", handle);
-		if (isSocket)
-			closesocket(reinterpret_cast<SOCKET>(handle));
-		else
-			CloseHandle(handle);
-		handle = INVALID_HANDLE_VALUE;
+	if (handle != INVALID_HANDLE_VALUE) {
+		CloseIoHandle(handle, handleType);
+		LogDebug(L"closed handle ", handle);
 	}
-	state = State::Destroyed;
-	if (!holdFlag)
-	{
+}
+
+void sab::ProxyIoContext::Dispose()
+{
+	// potential data race here
+	if (state != State::Destroyed) {
+		state = State::Destroyed;
+		LogDebug(L"terminating connection: ", handle);
+		// any pending io operation will be cancelled after close
+		// we can safely clean the context out of the list
+		CancelIoEx(handle, nullptr);
 		owner->RemoveContext(this);
 	}
 }
 
-void sab::IoContext::PrepareIo()
-{
-	++holdFlag;
-}
-
-void sab::IoContext::DoneIo()
-{
-	--holdFlag;
-}
-
-sab::IocpListenerConnectionManager::IocpListenerConnectionManager()
-	:cancelEvent(NULL), iocpHandle(NULL), initialized(false)
+sab::ProxyConnectionManager::ProxyConnectionManager()
+	:cancelFlag(false), iocpHandle(NULL), initialized(false)
 {
 }
 
-sab::IocpListenerConnectionManager::~IocpListenerConnectionManager()
+sab::ProxyConnectionManager::~ProxyConnectionManager()
 {
-	if (cancelEvent != NULL) {
+	if (!cancelFlag) {
 		Stop();
-		CloseHandle(cancelEvent);
 	}
 }
 
-bool sab::IocpListenerConnectionManager::Initialize()
+bool sab::ProxyConnectionManager::Initialize()
 {
-	cancelEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-	if (cancelEvent == NULL)
-		return false;
-
 	initialized = true;
 	return true;
 }
 
-bool sab::IocpListenerConnectionManager::Start()
+bool sab::ProxyConnectionManager::Start()
 {
 	if (!initialized)return false;
-	ResetEvent(cancelEvent);
 	iocpHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
 	if (iocpHandle == NULL) {
 		LogError(L"cannot create completion port!");
@@ -129,10 +105,10 @@ bool sab::IocpListenerConnectionManager::Start()
 	return true;
 }
 
-void sab::IocpListenerConnectionManager::Stop()
+void sab::ProxyConnectionManager::Stop()
 {
 	if (!initialized)return;
-	SetEvent(cancelEvent);
+	cancelFlag = true;
 	if (iocpHandle) {
 		CloseHandle(iocpHandle);
 		iocpHandle = NULL;
@@ -141,16 +117,16 @@ void sab::IocpListenerConnectionManager::Stop()
 		iocpThread.join();
 }
 
-bool sab::IocpListenerConnectionManager::DelegateConnection(
+bool sab::ProxyConnectionManager::DelegateConnection(
 	HANDLE connection,
 	std::shared_ptr<ProtocolListenerBase> listener,
 	std::shared_ptr<ListenerConnectionData> data,
 	bool isSocket)
 {
-	auto context = std::make_shared<IoContext>();
+	auto context = std::make_shared<ProxyIoContext>();
 
 	if (!CreateIoCompletionPort(connection, iocpHandle,
-		reinterpret_cast<ULONG_PTR>(context.get()), 0))
+		reinterpret_cast<ULONG_PTR>(std::static_pointer_cast<IoContext>(context).get()), 0))
 	{
 		LogDebug(L"cannot associate handle to completion port! ", LogLastError);
 		return false;
@@ -159,8 +135,8 @@ bool sab::IocpListenerConnectionManager::DelegateConnection(
 	context->handle = connection;
 	context->listener = listener;
 	context->listenerData = data;
-	context->isSocket = isSocket;
-	context->state = IoContext::State::Handshake;
+	context->handleType = isSocket ? IoContext::HandleType::SocketHandle : IoContext::HandleType::FileHandle;
+	context->state = ProxyIoContext::State::Handshake;
 
 	context->owner = shared_from_this();
 
@@ -178,22 +154,22 @@ bool sab::IocpListenerConnectionManager::DelegateConnection(
 		contextList.emplace_front(context);
 		context->selfIter = contextList.begin();
 	}
-	DoIoCompletion(context, true);
+	DoIoCompletion(context, 0);
 	return true;
 }
 
-void sab::IocpListenerConnectionManager::SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback)
+void sab::ProxyConnectionManager::SetEmitMessageCallback(std::function<void(SshMessageEnvelope*, std::shared_ptr<void>)>&& callback)
 {
 	receiveCallback = callback;
 }
 
-void sab::IocpListenerConnectionManager::RemoveContext(IoContext* context)
+void sab::ProxyConnectionManager::RemoveContext(IoContext* context)
 {
 	std::lock_guard<std::mutex> lg(listMutex);
 	contextList.erase(context->selfIter);
 }
 
-void sab::IocpListenerConnectionManager::IocpThreadProc()
+void sab::ProxyConnectionManager::IocpThreadProc()
 {
 	OVERLAPPED* overlapped;
 	DWORD bytes;
@@ -201,16 +177,24 @@ void sab::IocpListenerConnectionManager::IocpThreadProc()
 
 	LogDebug(L"started iocp thread");
 
-	while (WaitForSingleObject(cancelEvent, 0) != WAIT_OBJECT_0)
+	while (!cancelFlag)
 	{
 		overlapped = nullptr;
 		context = nullptr;
+		bytes = 0;
 		if (GetQueuedCompletionStatus(iocpHandle, &bytes,
 			reinterpret_cast<PULONG_PTR>(&context), &overlapped, INFINITE) == FALSE)
 		{
 			// error
-			if (GetLastError() == ERROR_BROKEN_PIPE) {
-				LogDebug(L"remote closed pipe.");
+			if (GetLastError() == ERROR_OPERATION_ABORTED)
+			{
+				// cancelled operation
+			}
+			else if (GetLastError() == ERROR_BROKEN_PIPE) {
+				LogDebug(L"remote unexpectedly closed pipe.");
+				// dispose context
+				if (context)
+					context->Dispose();
 			}
 			else if (GetLastError() == ERROR_ABANDONED_WAIT_0)
 			{
@@ -219,61 +203,47 @@ void sab::IocpListenerConnectionManager::IocpThreadProc()
 			}
 			else {
 				LogDebug(L"GetQueuedCompletionStatus failed! ", LogLastError);
-			}
-			if (context)
-			{
-				context->DoneIo();
-				context->Dispose();
+				if (context)
+					context->Dispose();
 			}
 		}
 		else
 		{
-			context->DoneIo();
-			DoIoCompletion(context->shared_from_this(), false);
+			DoIoCompletion(std::static_pointer_cast<ProxyIoContext>(context->shared_from_this()), bytes);
 		}
 	}
 }
 
-void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContext> context, bool noRealIo)
+void sab::ProxyConnectionManager::DoIoCompletion(std::shared_ptr<ProxyIoContext> context, DWORD transferred)
 {
 	BOOL result;
-	DWORD transferred = 0;
 	uint32_t beLength;
 	int writeLength;
 	int readLength;
 	IManagedListener* managedListener;
 
-	if (!noRealIo && (GetOverlappedResult(context->handle, &context->overlapped,
-		&transferred, FALSE) == FALSE))
-	{
-		LogDebug(L"failed to get overlapped operation result!");
-		context->Dispose();
-		return;
-	}
 	LogDebug(L"current state: ", IoContextStateToString(context->state));
 	switch (context->state)
 	{
-	case IoContext::State::Handshake:
+	case ProxyIoContext::State::Handshake:
 		managedListener = dynamic_cast<IManagedListener*>(context->listener.get());
 		assert(managedListener != nullptr);
 		if (!managedListener->DoHandshake(context, transferred))return;
-	case IoContext::State::Ready:
-		context->state = IoContext::State::ReadHeader;
+	case ProxyIoContext::State::Ready:
+		context->state = ProxyIoContext::State::ReadHeader;
 		context->ioNeedBytes = HEADER_SIZE;
 		context->message.data.clear();
 
-		context->PrepareIo();
 		result = ReadFile(context->handle, context->ioBuffer,
 			HEADER_SIZE, NULL, &context->overlapped);
 		if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
 		{
-			context->DoneIo();
 			context->Dispose();
 			return;
 		}
 		break;
-	case IoContext::State::ReadHeader:
-		context->state = IoContext::State::ReadBody;
+	case ProxyIoContext::State::ReadHeader:
+		context->state = ProxyIoContext::State::ReadBody;
 		context->ioNeedBytes -= transferred;
 
 		// Check transferred length
@@ -299,17 +269,15 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 		// Compute read length
 		readLength = min(MAX_BUFFER_SIZE, context->ioNeedBytes);
 
-		context->PrepareIo();
 		result = ReadFile(context->handle, context->ioBuffer,
 			readLength, NULL, &context->overlapped);
 		if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
 		{
-			context->DoneIo();
 			context->Dispose();
 			return;
 		}
 		break;
-	case IoContext::State::ReadBody:
+	case ProxyIoContext::State::ReadBody:
 		context->ioNeedBytes -= transferred;
 		if (context->ioNeedBytes < 0)
 		{
@@ -327,12 +295,10 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 			// continue reading...
 			readLength = min(MAX_BUFFER_SIZE, context->ioNeedBytes);
 
-			context->PrepareIo();
 			result = ReadFile(context->handle, context->ioBuffer,
 				readLength, NULL, &context->overlapped);
 			if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
 			{
-				context->DoneIo();
 				context->Dispose();
 				return;
 			}
@@ -340,56 +306,52 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 		else
 		{
 			// finished read
-			context->state = IoContext::State::WaitReply;
+			context->state = ProxyIoContext::State::WaitReply;
 			LogDebug(L"recv message: length=", context->message.length, L", type=0x",
 				std::hex, std::setfill(L'0'), std::setw(2), context->message.data[0]);
 			receiveCallback(&context->message, context);
 		}
 		break;
-	case IoContext::State::WaitReply:
-		context->state = IoContext::State::WriteReply;
+	case ProxyIoContext::State::WaitReply:
+		context->state = ProxyIoContext::State::WriteReply;
 		LogDebug(L"send message: length=", context->message.length, L", type=0x",
 			std::hex, std::setfill(L'0'), std::setw(2), context->message.data[0]);
 		// reply already filled into message member
 		beLength = htonl(context->message.length);
-		context->ioBufferOffest = static_cast<int>(HEADER_SIZE);
+		context->ioBufferOffset = static_cast<int>(HEADER_SIZE);
 		context->ioNeedBytes = static_cast<int>(context->message.data.size()) + HEADER_SIZE;
 
 		memcpy(context->ioBuffer, &beLength, HEADER_SIZE);
 
 		writeLength = min(MAX_BUFFER_SIZE, context->ioNeedBytes);
 
-		context->ioDataOffest = writeLength - HEADER_SIZE;
+		context->ioDataOffset = writeLength - HEADER_SIZE;
 		memcpy(context->ioBuffer + HEADER_SIZE, context->message.data.data(),
-			context->ioDataOffest);
+			context->ioDataOffset);
 
-		context->PrepareIo();
 		result = WriteFile(context->handle, context->ioBuffer,
 			writeLength, NULL, &context->overlapped);
 		if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
 		{
-			context->DoneIo();
 			context->Dispose();
 			return;
 		}
 		break;
-	case IoContext::State::WriteReply:
+	case ProxyIoContext::State::WriteReply:
 		context->ioNeedBytes -= transferred;
 		if (context->ioNeedBytes > 0)
 		{
 			// continue write
 			writeLength = min(MAX_BUFFER_SIZE, context->ioNeedBytes);
 			memcpy(context->ioBuffer,
-				context->message.data.data() + context->ioDataOffest,
+				context->message.data.data() + context->ioDataOffset,
 				writeLength);
-			context->ioDataOffest += writeLength;
+			context->ioDataOffset += writeLength;
 
-			context->PrepareIo();
 			result = WriteFile(context->handle, context->ioBuffer,
 				writeLength, NULL, &context->overlapped);
 			if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
 			{
-				context->DoneIo();
 				context->Dispose();
 				return;
 			}
@@ -398,8 +360,8 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 		{
 			// finished writing
 			// prepare for next message
-			context->state = IoContext::State::Ready;
-			DoIoCompletion(context, true);
+			context->state = ProxyIoContext::State::Ready;
+			DoIoCompletion(context, 0);
 		}
 		break;
 	default:
@@ -409,35 +371,14 @@ void sab::IocpListenerConnectionManager::DoIoCompletion(std::shared_ptr<IoContex
 	}
 }
 
-void sab::IocpListenerConnectionManager::PostMessageReply(std::shared_ptr<void> genericContext, SshMessageEnvelope* message, bool status)
+void sab::ProxyConnectionManager::PostMessageReply(std::shared_ptr<void> genericContext, SshMessageEnvelope* message, bool status)
 {
-	std::shared_ptr<IoContext> context = std::static_pointer_cast<IoContext>(genericContext);
+	auto context = std::static_pointer_cast<ProxyIoContext>(genericContext);
 	if (status) {
-		DoIoCompletion(context, true);
+		DoIoCompletion(context, 0);
 	}
 	else
 	{
 		context->Dispose();
 	}
-}
-
-static SOCKET DuplicateSocket(SOCKET s)
-{
-	WSAPROTOCOL_INFOW info;
-	SOCKET ret;
-	int r;
-	r = WSADuplicateSocketW(s, GetCurrentProcessId(), &info);
-	if (r != 0)
-	{
-		LogError(L"cannot duplicated socket! ", LogWSALastError);
-		return INVALID_SOCKET;
-	}
-	ret = WSASocketW(info.iAddressFamily, info.iSocketType, info.iProtocol,
-		&info, 0, WSA_FLAG_OVERLAPPED);
-	if (ret == INVALID_SOCKET)
-	{
-		LogError(L"cannot create new socket! ", LogWSALastError);
-		return INVALID_SOCKET;
-	}
-	return ret;
 }

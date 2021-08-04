@@ -14,7 +14,7 @@ namespace sab
 	static constexpr size_t MAX_BUFFER_SIZE = 4 * 1024;
 
 	class IConnectionManager;
-	
+
 	class ListenerConnectionData
 	{
 	public:
@@ -31,125 +31,41 @@ namespace sab
 	class IoContext :public std::enable_shared_from_this<IoContext>
 	{
 	public:
-
-		enum class State
+		enum class HandleType
 		{
-			/// <summary>
-			/// after construction
-			/// </summary>
-			Initialized = 0,
-
-			/// <summary>
-			/// connection was added to manager, waiting to do handshake
-			/// </summary>
-			Handshake,
-
-			/// <summary>
-			/// ready for next message
-			/// </summary>
-			Ready,
-
-			/// <summary>
-			/// reading header
-			/// </summary>
-			ReadHeader,
-
-			/// <summary>
-			/// reading body
-			/// </summary>
-			ReadBody,
-
-			/// <summary>
-			/// waiting for reply
-			/// </summary>
-			WaitReply,
-
-			/// <summary>
-			/// writing reply back
-			/// </summary>
-			WriteReply,
-
-			/// <summary>
-			/// connection ends, but the context is still referenced by someone else
-			/// </summary>
-			Destroyed,
+			Invalid = 0,
+			FileHandle,
+			SocketHandle
 		};
-		/*
-		 * Normal Message:
-		 * Initialized -> Handshake -> Ready -> ReadHeader -> ReadBody -> WaitReply -> WriteReply
-		 *                               A                                                 |
-		 *                               +-------------------------------------------------+
-		 * Any state can go `Destroyed` when exception occurred/connection closes
-		 */
 	public:
-		/// <summary>
-		/// io handle
-		/// </summary>
+		/**
+		 * @brief i/o handle
+		*/
 		HANDLE handle;
 
-		/// <summary>
-		/// set to true if it is a socket
-		/// </summary>
-		bool isSocket;
-
-		/// <summary>
-		/// OVERLAPPED structure for iocp
-		/// </summary>
-		OVERLAPPED overlapped;
-
-		/// <summary>
-		/// state
-		/// </summary>
-		State state;
-
-		/// <summary>
-		/// message store
-		/// </summary>
-		SshMessageEnvelope message;
-
-		/// <summary>
-		/// offest in message envelope
-		/// </summary>
-		int ioDataOffest;
-
-		/// <summary>
-		/// offest in io buffer
-		/// </summary>
-		int ioBufferOffest;
-
-		/// <summary>
-		/// transaction size
-		/// </summary>
-		int ioNeedBytes;
-
-		/// <summary>
-		/// buffer
-		/// </summary>
-		char ioBuffer[MAX_BUFFER_SIZE];
+		/**
+		 * @brief handle type
+		*/
+		HandleType handleType;
 	public:
-		/// <summary>
-		/// listener of the connection
-		/// </summary>
+		/**
+		 * @brief the listener delegates the connection
+		*/
 		std::shared_ptr<ProtocolListenerBase> listener;
 
-		/// <summary>
-		/// listener data
-		/// </summary>
+		/**
+		 * @brief listener specific data
+		*/
 		std::shared_ptr<ListenerConnectionData> listenerData;
-	public:
-		/// <summary>
-		/// flag to prevent from cleaned from context list
-		/// </summary>
-		std::atomic<int> holdFlag;
-
-		/// <summary>
-		/// iterator in context list
-		/// </summary>
+		
+		/**
+		 * @brief iterator of the context in context list of connection manager
+		*/
 		std::list<std::shared_ptr<IoContext>>::iterator selfIter;
 
-		/// <summary>
-		/// connection manager owns the context
-		/// </summary>
+		/**
+		 * @brief the connection manager this context belongs to
+		*/
 		std::shared_ptr<IConnectionManager> owner;
 	public:
 
@@ -160,21 +76,15 @@ namespace sab
 		IoContext& operator=(const IoContext&) = delete;
 		IoContext& operator=(IoContext&&) = delete;
 
-		~IoContext();
+		virtual ~IoContext();
 	public:
-		/// <summary>
-		/// dispose this io context
-		/// </summary>
-		void Dispose();
+		/**
+		 * @brief remove the context from connection manager's list
+		*/
+		virtual void Dispose() = 0;
 
-		/// <summary>
-		/// called before any io
-		/// </summary>
-		void PrepareIo();
-		/// <summary>
-		/// called after io completes
-		/// </summary>
-		void DoneIo();
+	public:
+		static void CloseIoHandle(HANDLE handle, HandleType type);
 	};
 
 	class IConnectionManager
@@ -218,17 +128,12 @@ namespace sab
 			std::shared_ptr<ProtocolListenerBase> listener,
 			std::shared_ptr<ListenerConnectionData> data,
 			bool isSocket) = 0;
-	protected:
+
 		/// <summary>
 		/// remove context from context list
 		/// </summary>
 		/// <param name="context"></param>
 		virtual void RemoveContext(IoContext* context) = 0;
-
-		/// <summary>
-		/// make IoContext our friend
-		/// </summary>
-		friend class IoContext;
 	};
 
 	class IManagedListener

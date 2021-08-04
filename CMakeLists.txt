@@ -30,7 +30,7 @@ SET(SOURCES
 	"protocol/libassuan_socket_emulation/connector.cpp"
 	"protocol/libassuan_socket_emulation/listener.cpp"
 	
-	)
+	 "protocol/connection_manager.cpp")
 
 ADD_EXECUTABLE(ssh-agent-bridge WIN32 ${SOURCES})
 TARGET_LINK_LIBRARIES(ssh-agent-bridge Ws2_32 Bcrypt)

@@ -22,6 +22,7 @@ namespace sab
 		};
 
 		State state;
+		OVERLAPPED overlapped;
 		char nonce[LibassuanSocketEmulationListener::NONCE_LENGTH];
 	};
 }
@@ -85,12 +86,10 @@ bool sab::LibassuanSocketEmulationListener::DoHandshake(
 	case DataType::State::Start:
 		LogDebug(L"start authenticating.");
 		data->state = DataType::State::ReadNonce;
-		context->PrepareIo();
 		result = ReadFile(context->handle, data->nonce, NONCE_LENGTH,
-			NULL, &context->overlapped);
+			NULL, &data->overlapped);
 		if (result == FALSE && GetLastError() != ERROR_IO_PENDING)
 		{
-			context->DoneIo();
 			context->Dispose();
 		}
 		return false;
@@ -267,7 +266,7 @@ bool sab::LibassuanSocketEmulationListener::ListenLoop()
 		return false;
 	}
 
-	LogInfo(L"start listening on port ", portNumber);
+	LogInfo(L"start listening on port ", portNumber, L" for ", socketPath);
 
 	while (true)
 	{
@@ -301,6 +300,7 @@ bool sab::LibassuanSocketEmulationListener::ListenLoop()
 					LogDebug(L"accepted a socket");
 					auto data = std::make_shared<LibassuanSocketEmulationListenerData>();
 					memset(data->nonce, 0, NONCE_LENGTH);
+					memset(&data->overlapped, 0, sizeof(OVERLAPPED));
 					data->state = LibassuanSocketEmulationListenerData::State::Start;
 					if (!connectionManager->DelegateConnection(
 						reinterpret_cast<HANDLE>(acceptSocket),

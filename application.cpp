@@ -90,7 +90,7 @@ sab::Application::~Application()
 bool sab::Application::Initialize(const IniFile& config)
 {
 	// do init
-	connectionManager = std::make_shared<IocpListenerConnectionManager>();
+	connectionManager = std::make_shared<ProxyConnectionManager>();
 	gpgConnectionManager = std::make_shared<Gpg4WinForwardConnectionManager>();
 	dispatcher = std::make_shared<MessageDispatcher>();
 	connectionManager->SetEmitMessageCallback([=](sab::SshMessageEnvelope* msg, std::shared_ptr<void> holdKey)
