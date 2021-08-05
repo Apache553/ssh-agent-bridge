@@ -230,7 +230,7 @@ void sab::Gpg4WinForwardConnectionManager::DoForward(std::shared_ptr<ForwardIoCo
 		context->state[peerIdx] = ForwardIoContext::State::Write;
 
 		// LogDebug(L"forward ", context->ioHandle[peerIdx], L"->", context->ioHandle[1 - peerIdx], L", ", transferred, L" bytes.");
-		
+
 		result = WriteFile(context->ioHandle[ForwardIoContext::PeerOf(peerIdx)],
 			context->buffer[peerIdx] + context->bufferOffset[peerIdx],
 			static_cast<DWORD>(context->needTransfer[peerIdx]), NULL,
@@ -323,6 +323,8 @@ bool sab::Gpg4WinForwardConnectionManager::PreparePeer(ForwardIoContext& context
 	context.ioHandleType[1] = IoContext::HandleType::SocketHandle;
 	context.state[1] = ForwardIoContext::State::Ready;
 
+	context.handle = INVALID_HANDLE_VALUE;
+	
 	return true;
 }
 
@@ -342,6 +344,11 @@ sab::ForwardIoContext::ForwardIoContext()
 
 sab::ForwardIoContext::~ForwardIoContext()
 {
+	if (handle != INVALID_HANDLE_VALUE)
+	{
+		CloseIoHandle(handle, handleType);
+		LogDebug(L"closed handle ", handle);
+	}
 	for (size_t i = 0; i < PEER_COUNT; ++i)
 	{
 		if (ioHandle[i] != INVALID_HANDLE_VALUE)
