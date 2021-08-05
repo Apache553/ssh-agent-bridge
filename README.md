@@ -19,7 +19,9 @@ Windows 平台上存在着多种 ssh agent 的实现，由于 Windows 平台的�
 -----
 
 ### 准备工作
-编译或下载得到`ssh-agent-bridge.exe`并将它放在你喜欢的位置
+编译或下载得到`ssh-agent-bridge.exe`并将它放在你喜欢的位置。
+编译需要 msvc 工具链，暂时不支持 mingw。
+
 
 ### 编辑配置
 在不指定配置文件位置的情况下，程序将会依次尝试读取`%USERPROFILE%\ssh-agent-bridge\ssh-agent-bridge.ini`和可执行文件所在目录下的`ssh-agent-bridge.ini`。
@@ -175,7 +177,7 @@ write-lxss-metadata = false
 ; 将被写入的 LXSS 元数据
 ; 可选
 ; 适用于： unix, wsl2
-; 注意： 不指定或者留空的项将不会被写入。unix套接字需要父目录有执行权限才能运作。
+; 注意： 未指定或者留空的项将不会被写入。unix套接字需要父目录有执行权限才能运作。
 metadata-uid = 1000
 metadata-gid = 1000
 metadata-mode = 0600
