@@ -155,32 +155,48 @@ void sab::Logger::WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 
 void sab::Logger::SetLogOutputLevel(LogLevel level)
 {
+	if (overrideLevel != LogLevel::Invalid)
+		return;
 	outputLevel = level;
 	LogInfo(L"set log level: ", TranslateLogLevel(level));
 }
 
-sab::Logger& sab::Logger::GetInstance(bool isDebug, bool allocConsole)noexcept
+sab::Logger& sab::Logger::GetInstance()noexcept
 {
-	static Logger instance(isDebug, allocConsole);
+	static Logger instance;
 	return instance;
 }
 
-sab::Logger::Logger(bool isDebug, bool allocConsole)noexcept
+sab::Logger::Logger()noexcept
 	:stdinStream(nullptr), stdoutStream(nullptr), stderrStream(nullptr),
-	outputLevel(LogLevel::Info)
+	outputLevel(LogLevel::Info), overrideLevel(LogLevel::Invalid)
 {
 	std::setlocale(LC_ALL, ".utf8");
-
-	debugOutput = isDebug;
-	if (allocConsole)
-	{
-		allocatedConsole = PrepareConsole();
-	}
-	PrepareFileLog();
 }
 
 sab::Logger::~Logger()noexcept
 {
 	FreeConsole();
 	FreeFileLog();
+}
+
+void sab::Logger::EnableDebugOutput()
+{
+	debugOutput = true;
+}
+
+void sab::Logger::EnableConsoleOutput()
+{
+	allocatedConsole = PrepareConsole();
+}
+
+void sab::Logger::EnableFileLogOutput()
+{
+	PrepareFileLog();
+}
+
+void sab::Logger::SetLevelOverride(LogLevel level)
+{
+	overrideLevel = level;
+	outputLevel = level;
 }

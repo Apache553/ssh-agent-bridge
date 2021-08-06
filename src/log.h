@@ -35,13 +35,14 @@ namespace sab
 		std::mutex ioMutex;
 
 		LogLevel outputLevel;
+		LogLevel overrideLevel;
 
 		bool debugOutput = false;
 
 		void WriteLogImpl(LogLevel level, const wchar_t* file, int line,
 			const std::wstring& str)noexcept;
 
-		Logger(bool isDebug, bool allocConsole)noexcept;
+		Logger()noexcept;
 		~Logger()noexcept;
 	public:
 		template<typename ...Args>
@@ -57,8 +58,13 @@ namespace sab
 
 		void SetLogOutputLevel(LogLevel level);
 		LogLevel GetLogOutputLevel()const { return outputLevel; }
+		
+		void EnableDebugOutput();
+		void EnableConsoleOutput();
+		void EnableFileLogOutput();
+		void SetLevelOverride(LogLevel level);
 
-		static Logger& GetInstance(bool isDebug = false, bool allocConsole = false)noexcept;
+		static Logger& GetInstance()noexcept;
 	};
 }
 

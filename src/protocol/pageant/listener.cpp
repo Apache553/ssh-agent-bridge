@@ -70,6 +70,7 @@ bool sab::PageantListener::Run()
 		ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD);
 	}
 
+	LogDebug(L"start message loop!");
 	// message loop
 	MSG message;
 	BOOL status;

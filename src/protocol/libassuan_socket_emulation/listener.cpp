@@ -204,6 +204,16 @@ bool sab::LibassuanSocketEmulationListener::ListenLoop()
 		return false;
 	}
 
+	// always delete the socket file first
+	if (CheckFileExists(socketPath))
+	{
+		LogWarning(L"socket exists! deleting...");
+		if (DeleteFileW(socketPath.c_str()) == 0)
+		{
+			LogWarning(L"cannot delete the file! ", LogLastError);
+		}
+	}
+
 	HANDLE socketFileHandle = CreateFileW(socketPath.c_str(),
 		GENERIC_READ | GENERIC_WRITE,
 		FILE_SHARE_READ,

@@ -80,11 +80,12 @@ sab::Application::Application()
 	:exitCode(0), isService(false)
 {
 	cancelEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-	assert(cancelEvent != nullptr);
+	assert(cancelEvent != NULL);
 }
 
 sab::Application::~Application()
 {
+	CloseHandle(cancelEvent);
 }
 
 bool sab::Application::Initialize(const IniFile& config)
@@ -225,7 +226,8 @@ bool sab::Application::Initialize(const IniFile& config)
 
 int sab::Application::Run()
 {
-	ServiceSupport::GetInstance().ReportStatus(SERVICE_START_PENDING, 0, 3000);
+	int exitCode = 0;
+	ServiceSupport::GetInstance().ReportStatus(SERVICE_START_PENDING, exitCode, 3000);
 	auto ini = ParseIniFile(configPath);
 	if (!ini.second)
 		return 1;
@@ -237,6 +239,10 @@ int sab::Application::Run()
 	gpgConnectionManager->Start();
 
 	std::vector<std::thread> listenThreads;
+	HANDLE errorEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+	assert(errorEvent != NULL);
+	auto errorEventGuard = HandleGuard(errorEvent, CloseHandle);
+
 	for (auto& l : listeners)
 	{
 		listenThreads.emplace_back([=]()
@@ -245,18 +251,24 @@ int sab::Application::Run()
 				{
 					ServiceSupport::GetInstance().ReportStatus(SERVICE_STOPPED, 1);
 					LogError(L"cannot start listener!");
-					abort();
+					SetEvent(errorEvent);
 				}
 			});
 	}
 
+	HANDLE waitList[2]{ cancelEvent, errorEvent };
+
 	dispatcher->Start();
 
-	ServiceSupport::GetInstance().ReportStatus(SERVICE_RUNNING, 0);
+	ServiceSupport::GetInstance().ReportStatus(SERVICE_RUNNING, exitCode);
 
-	WaitForSingleObject(cancelEvent, INFINITE);
-
-	ServiceSupport::GetInstance().ReportStatus(SERVICE_STOP_PENDING, 0, 3000);
+	DWORD result = WaitForMultipleObjects(2, waitList, FALSE, INFINITE);
+	if (result != WAIT_OBJECT_0)
+	{
+		LogError(L"error occurred, exiting...");
+		exitCode = 1;
+	}
+	ServiceSupport::GetInstance().ReportStatus(SERVICE_STOP_PENDING, exitCode, 3000);
 
 	dispatcher->Stop();
 	for (auto& l : listeners)
@@ -270,7 +282,7 @@ int sab::Application::Run()
 	}
 	connectionManager->Stop();
 	gpgConnectionManager->Stop();
-	return 0;
+	return exitCode;
 }
 
 int sab::Application::RunStub(bool isService, const std::wstring& configPath)

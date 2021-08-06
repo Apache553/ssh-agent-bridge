@@ -14,15 +14,23 @@
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	PWSTR pCmdLine, int nCmdShow)
 {
+	sab::Logger::GetInstance().EnableFileLogOutput();
+	
 	sab::CommandLineOption options =
 		sab::ExtractCommandLineOption(
 			sab::SplitCommandLine(
 				GetCommandLineW()));
 
-	if (!options.isGood)
+	if (!options.isGood) {
+		LogError(L"Invalid Commandline");
 		return 1;
+	}
 
-	sab::Logger::GetInstance(options.isDebug, options.allocConosle);
+	if (options.isDebug)
+		sab::Logger::GetInstance().EnableDebugOutput();
+	if (options.allocConosle)
+		sab::Logger::GetInstance().EnableConsoleOutput();
+	
 
 	if (options.logLevel == sab::Logger::LogLevel::Invalid)
 		options.logLevel = sab::Logger::LogLevel::Info;

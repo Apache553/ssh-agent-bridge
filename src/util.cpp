@@ -160,7 +160,6 @@ std::wstring sab::GetExecutablePath()
 		}
 		else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
 		{
-			buffer.reset();
 			bufferLength += bufferLength / 2; // grow by 1.5
 			buffer.reset(new wchar_t[bufferLength]);
 		}

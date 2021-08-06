@@ -214,13 +214,13 @@ int main(int argc, char** argv)
 		close(nullfd);
 	}
 
-	if (refcountFlag)
+	pid_t pid = GetPid();
+	if (pid > 0)
 	{
-		pid_t pid = GetPid();
-		if (pid > 0)
+		// pid present
+		if (kill(pid, 0) == 0)
 		{
-			// pid present
-			if (kill(pid, 0) == 0)
+			if (refcountFlag)
 			{
 				SetThreadName("Monitor");
 				// notify new session
@@ -228,10 +228,11 @@ int main(int argc, char** argv)
 				MonitorLoop();
 				// notify session termination
 				kill(pid, SIGUSR2);
-				exit(0);
 			}
+			exit(0);
 		}
 	}
+
 
 	// pid isn't present or process with pid in file exited
 	if (!pidFilePath.empty()) {
@@ -281,11 +282,11 @@ int PrepareListener()
 		return -1;
 	}
 
-	if(deleteExistSocket)
+	if (deleteExistSocket)
 	{
 		remove(localSocketPath.c_str());
 	}
-	
+
 	sockaddr_un socketAddress;
 	std::memset(&socketAddress, 0, sizeof(socketAddress));
 	socketAddress.sun_family = AF_UNIX;
@@ -584,7 +585,7 @@ bool ParseCommandLine(int argc, char** argv)
 			target = &remoteAddress;
 		else if (option == "-p")
 			target = &pidFilePath;
-		else if(option == "-d")
+		else if (option == "-d")
 		{
 			deleteExistSocket = true;
 			continue;
@@ -605,7 +606,7 @@ bool ParseCommandLine(int argc, char** argv)
 		}
 		else
 		{
-			std::cerr << "unknown option\n";
+			std::cerr << "unknown option \"" << option << "\"\n";
 			return false;
 		}
 		if (i + 1 >= argc)

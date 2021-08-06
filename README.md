@@ -57,13 +57,19 @@ ssh-agent-bridge.exe /UninstallService
 ### 日志输出
 日志将会被保存到`%APPDATA%\ssh-agent-bridge.log`
 
+如果想要实时观察输出情况，使用 powershell 命令：
+```
+Start-Process -Wait .\ssh-agent-bridge.exe '/Console'
+```
+在命令行窗口实时观察输出。
+
 参考
 -----
 
 ### 命令行选项
 ```
 /Loglevel debug|info|warn|error
-设置输出日志等级，会被配置文件中的配置覆盖
+设置输出日志等级
 
 /Service
 以服务运行所必要的选项
