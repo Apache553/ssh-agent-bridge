@@ -25,6 +25,8 @@ SET(SOURCES
 	"protocol/libassuan_socket_emulation/client.cpp"
 	"protocol/libassuan_socket_emulation/connector.cpp"
 	"protocol/libassuan_socket_emulation/listener.cpp"
+
+	"protocol/hyperv/listener.cpp"
 	
 	"protocol/connection_manager.cpp"
 )

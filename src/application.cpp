@@ -7,6 +7,7 @@
 #include "protocol/namedpipe/listener.h"
 #include "protocol/pageant/listener.h"
 #include "protocol/unix/listener.h"
+#include "protocol/hyperv/listener.h"
 #include "protocol/namedpipe/client.h"
 #include "protocol/pageant/client.h"
 #include "lxperm.h"
@@ -44,6 +45,7 @@ static TypeAction actionList[] = {
 	{L"pageant", sab::SetupPageantListener, sab::SetupPageantClient },
 	{L"wsl2", sab::SetupWsl2Listener },
 	{L"unix", sab::SetupUnixListener },
+	{L"hyperv", sab::SetupHyperVListener }
 };
 
 static bool GetLxPermissionInfo(const sab::IniSection& section, sab::LxPermissionInfo& perm)
@@ -153,6 +155,7 @@ bool sab::Application::Initialize(const IniFile& config)
 					findFlag = true;
 					if (role.first == L"listener")
 					{
+						LogDebug(L"Setting up listener \"", sectionName, L"\" type \"", type.first, L"\"");
 						if (!actionList[i].createListener)
 						{
 							LogError(L"type \"", type.first, L"\" does not support role \"", role.first, L"\"");
@@ -161,17 +164,19 @@ bool sab::Application::Initialize(const IniFile& config)
 						// check gpg forward
 						auto targetPath = GetPropertyString(section, L"forward-socket-path");
 						std::shared_ptr<ProtocolListenerBase> ptr;
-						if (targetPath.second && (type.first == L"unix" || type.first == L"wsl2"))
+						if (targetPath.second && (type.first == L"unix" || type.first == L"wsl2" || type.first == L"hyperv"))
 						{
+							LogDebug(L"Setup for gpg forwarding.");
 							ptr = actionList[i].createListener(section, gpgConnectionManager, dispatcher);
 							auto targetPathEx = ReplaceEnvironmentVariables(targetPath.first);
 							if (ptr) {
 								gpgConnectionManager->SetTarget(ptr, targetPathEx);
-								auto sockPath = GetPropertyString(section, L"path");
-								LogDebug(L"\"", targetPathEx, L"\" <-> \"", ReplaceEnvironmentVariables(sockPath.first), L"\"");
+								// auto sockPath = GetPropertyString(section, L"path");
+								// LogDebug(L"\"", targetPathEx, L"\" <-> \"", ReplaceEnvironmentVariables(sockPath.first), L"\"");
 							}
 						}
 						else {
+							LogDebug(L"Setup for ssh agent proxy.");
 							ptr = actionList[i].createListener(section, connectionManager, dispatcher);
 						}
 						if (ptr == nullptr)
@@ -183,6 +188,7 @@ bool sab::Application::Initialize(const IniFile& config)
 					}
 					else if (role.first == L"client")
 					{
+						LogDebug(L"Setting up client \"", sectionName, L"\" type \"", type.first, L"\"");
 						if (!actionList[i].createClient)
 						{
 							LogError(L"type \"", type.first, L"\" does not support role \"", role.first, L"\"");
@@ -473,6 +479,14 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::SetupUnixListener(
 		enablePermissionCheck.first,
 		writeMetadata.first,
 		perm);
+}
+
+std::shared_ptr<sab::ProtocolListenerBase> sab::SetupHyperVListener(const IniSection& section, std::shared_ptr<IConnectionManager> manager, std::shared_ptr<MessageDispatcher> dispatcher)
+{
+	auto listenGUID = GetPropertyString(section, L"listen-address");
+	auto listenPort = GetPropertyString(section, L"listen-port");
+	auto listenServiceTemplate = GetPropertyString(section, L"listen-service-template");
+	return std::make_shared<HyperVSocketListener>(listenPort.first, manager, listenGUID.first, listenServiceTemplate.first);
 }
 
 std::shared_ptr<sab::ProtocolClientBase> sab::SetupPageantClient(const IniSection& section)

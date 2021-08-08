@@ -34,3 +34,4 @@
 out/
 .vs/
 CMakeSettings.json
+/wsl2_helper/ssh-agent-bridge-wsl2-helper

@@ -122,6 +122,8 @@ loglevel = info
 ;                  ; Unix 域套接字，可以在 WSL 1 下直接使用
 ;   - wsl2         ; listener
 ;                  ; 与 libassuan 的模拟 Unix 域套接字兼容的通信方式，用于兼容 gpg 和实现 WSL 2 的支持
+;   - hyperv       ; listener
+;                  ; 使用 AF_HYPERV 与 AF_VSOCK 实现的 WSL2/Hyper-V 虚拟机通信支持
 ; 注意： 需要你自己保证各个通信方式之间没有冲突
 type = namedpipe
 
@@ -150,11 +152,23 @@ enable-permission-check = true
 
 ; 设置套接字监听的地址
 ; 可选
-; 适用于： wsl2
-; 默认值： 0.0.0.0
-; 注意： 由于WSL2采用了虚拟机的方案，虚拟机的网卡很可能被 Windows 识别为公共网络。
-;       请针对此调整 Windows 防火墙，允许程序在公共网络上的访问，否则 WSL2 无法连接。
+; 适用于： wsl2, hyperv
+; 注意： 对于 wsl2 方式：
+;           默认值：0.0.0.0
+;           由于WSL2采用了虚拟机的方案，虚拟机的网卡很可能被 Windows 识别为公共网络。
+;           请针对此调整 Windows 防火墙，允许程序在公共网络上的访问，否则 WSL2 无法连接。
+;       对于 hyperv 方式：
+;           默认值：{00000000-0000-0000-0000-000000000000} 即 HV_GUID_WILDCARD
+;           支持几个预定义的值：wildcard, children, loopback
+;           或者是形如 {00000000-0000-0000-0000-000000000000} 的 GUID
+;           参阅：https://bit.ly/3Cnml21
 listen-address = 0.0.0.0
+
+; 设置监听的端口
+; 可选
+; 适用于： hyperv
+; 默认值： 0x44417A9F
+listen-port = 0x44417A9F
 
 ; 允许非特权进程访问在特权上下文中运行的 agent
 ; 可选
@@ -166,7 +180,7 @@ allow-non-elevated-access = false
 
 ; 指定想要转发的 gpg 套接字位置
 ; 可选
-; 适用于： unix, wsl2
+; 适用于： unix, wsl2, hyperv
 ; 注意： 如果你想转发 gpg 套接字，请指定此选项。目标将作为 libassuan 模拟的 Unix 域套接字被连接。
 forward-socket-path = %APPDATA%\gnupg\S.gpg-agent
 
@@ -189,12 +203,62 @@ metadata-gid = 1000
 metadata-mode = 0600
 ```
 
-## WSL 2 支持
+## WSL 支持
+
+### WSL 1 支持
+
+WSL1 支持 Windows 原生 Unix 域套接字，所以可以在配置中定义`unix`方式的通信方式，然后在 WSL 中访问即可。
+
+### WSL2 支持
 
 由于 WSL 2 移除了`AF_UNIX`在 WSL 与 Windows 的互操作能力以及 WSL 的网络栈与宿主相对隔离，要正常使用功能需要一个工具程序。
-在 linux 环境下编译`wsl2_helper`目录下的程序，得到的程序`ssh-agent-bridge-wsl2-helper`就是用来解决这个问题的。
 
-### 用法
+目前可以使用 socat 通过`AF_VSOCK`转发或使用本项目实现的 helper 来转发。
+
+#### socat
+
+socat 可以通过 AF_VSOCK 来连接到宿主系统上的 Integration Service。要求在宿主系统上写入对应的注册表项，在本程序中定义`hyperv`方式的通信方式。
+
+根目录下有一 powershell 脚本`hyperv_register.ps1`可以用于帮助您写入相应的注册表项和生成对应的 socat 命令行选项。
+
+##### 注意事项
+
+由于 Microsoft 的限制，在供 WSL2 使用时必须显式指定其 VmId，而通常的 HyperV Linux虚拟机使用全零 GUID wildcard 就足够了。为了获得 WSL2 所在虚拟机的 ID，在 WSL2 运行中的情况下，在管理员权限命令行中执行：
+
+```
+hcsdiag.exe list
+```
+
+可以得到类似以下的输出：
+
+```
+XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    VM,                         Running, XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX, WSL
+```
+
+`XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX`就是对应的 VmId，将`{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`填入相应配置的`listen-address`即可。
+
+##### 示例
+
+在`.bashrc`中写入
+
+```
+export SSH_AUTH_SOCK=~/.ssh/agent.socket
+SOCAT_OPT="SOCKET-CONNECT:40:0:x0000x9f7a4144x02000000x00000000"
+ss -lnx | grep -q $SSH_AUTH_SOCK
+if [ $? -ne 0 ]; then
+	rm -f $SSH_AUTH_SOCK
+    (setsid nohup socat UNIX-LISTEN:$SSH_AUTH_SOCK,fork $SOCAT_OPT >/dev/null 2>&1 &)
+fi
+```
+
+用脚本的输出内容的`*-CONNECT:*`内容替换`SOCAT_OPT`的内容（根据 socat 的版本选择对应的项），即可在登录时自动启动 socat 并设置环境变量。
+
+#### Helper
+
+此 helper 可以在内核不支持`VSOCK`之时使用。要求在配置中定义`wsl2`方式的通信方式。
+
+在 linux 环境下编译`wsl2_helper`目录下的程序，得到的程序`ssh-agent-bridge-wsl2-helper`就是用来解决这个问题的。
 
 ```
 Usage: ./ssh-agent-bridge-wsl2-helper -r <remote> [-l local] [-a remoteAddress] [-b] [-p pidFile] [-c] [-h]
@@ -217,25 +281,23 @@ Option:
                 显示帮助信息
 ```
 
-### 示例
+##### 示例
 
 在`.bashrc`中写入
 
 ```
+export SSH_AUTH_SOCK=~/.ssh/agent.socket
 ssh-agent-bridge-wsl2-helper -b \
-    -l ~/.ssh/agent.socket \ 
+    -l $SSH_AUTH_SOCK \ 
     -r /mnt/c/Users/John/ssh-agent-bridge/wsl2-ssh-agent.socket \
     -p ~/.ssh/helper-ssh-agent.pid 2>/dev/null
-export SSH_AUTH_SOCK=~/.ssh/agent.socket
 ```
 
 即可在登录时自动启动 helper 并设置环境变量。
 
 ## GPG 转发
 
-将 helper 命令行选项 `-r`选项中的路径换成 gpg 的转发 socket 的路径即可实现转发 gpg-agent。
-
-或者直接配置一个使用`unix`通信方式的 listener，可以在 WSL1 下直接访问。
+helper 使用的通信方式是`wsl2`，与 GPG4Win 使用的方式是兼容的，所以可以直接将`-r`选项中的路径指向 gpg-agent 创建的 socket 文件。在 WSL1 下这种直接的方式是没有问题的。然而在 WSL2 下，由于虚拟机网络隔离，而 gpg-agent 只监听于 localhost(127.0.0.1)。所以不能直接只使用 helper，需要在定义对应的通信方式后使用 socat 或者 helper 来帮助转发。
 
 由于 gpg 不支持指定 socket 的路径，默认读取 `$GNUPGHOME`或`~/.gnupg` 目录下的 socket 文件，即 `S.gpg-agent` 等文件。
 

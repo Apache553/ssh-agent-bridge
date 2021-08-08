@@ -83,3 +83,9 @@ namespace sab
 
 #define LogNtStatus(x) L"0x", std::setfill(L'0'), std::setw(8), std::right, \
 	std::hex, (x), L": ", sab::FormatLastError(x, GetModuleHandleW(L"ntdll.dll"))
+
+#define LogGUID(x) L'{', std::noshowbase, std::hex, std::setfill(L'0'), \
+	std::setw(8), x.Data1, L'-', std::setw(4), x.Data2, L'-', std::setw(4), x.Data3, L'-', \
+	std::setw(2), x.Data4[0], std::setw(2), x.Data4[1], L'-', \
+	std::setw(2), x.Data4[2], std::setw(2), x.Data4[3], std::setw(2), x.Data4[4], \
+	std::setw(2), x.Data4[5], std::setw(2), x.Data4[6], std::setw(2), x.Data4[7], L'}'
