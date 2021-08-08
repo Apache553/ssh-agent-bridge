@@ -43,7 +43,7 @@ struct TypeAction
 static TypeAction actionList[] = {
 	{L"namedpipe", sab::SetupNamedPipeListener, sab::SetupNamedPipeClient },
 	{L"pageant", sab::SetupPageantListener, sab::SetupPageantClient },
-	{L"wsl2", sab::SetupWsl2Listener },
+	{L"assuan_emu", sab::SetupWsl2Listener },
 	{L"unix", sab::SetupUnixListener },
 	{L"hyperv", sab::SetupHyperVListener }
 };
@@ -164,7 +164,7 @@ bool sab::Application::Initialize(const IniFile& config)
 						// check gpg forward
 						auto targetPath = GetPropertyString(section, L"forward-socket-path");
 						std::shared_ptr<ProtocolListenerBase> ptr;
-						if (targetPath.second && (type.first == L"unix" || type.first == L"wsl2" || type.first == L"hyperv"))
+						if (targetPath.second && (type.first == L"unix" || type.first == L"assuan_emu" || type.first == L"hyperv"))
 						{
 							LogDebug(L"Setup for gpg forwarding.");
 							ptr = actionList[i].createListener(section, gpgConnectionManager, dispatcher);

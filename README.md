@@ -10,6 +10,7 @@ Windows 平台上存在着多种 ssh agent 的实现，由于 Windows 平台的�
 - Putty (Pageant) *
 - Windows native unix domain socket
 - Libassuan emulated unix domain socket
+- HyperV socket
 
 其中带有 * 标记的是支持的具体 agent 实现类型，其余的仅能支持监听请求。
 
@@ -120,10 +121,10 @@ loglevel = info
 ;                  ; Putty 使用的通信方式
 ;   - unix         ; listener
 ;                  ; Unix 域套接字，可以在 WSL 1 下直接使用
-;   - wsl2         ; listener
+;   - assuan_emu   ; listener
 ;                  ; 与 libassuan 的模拟 Unix 域套接字兼容的通信方式，用于兼容 gpg 和实现 WSL 2 的支持
 ;   - hyperv       ; listener
-;                  ; 使用 AF_HYPERV 与 AF_VSOCK 实现的 WSL2/Hyper-V 虚拟机通信支持
+;                  ; 使用 AF_HYPERV 与 AF_VSOCK 实现的 WSL2/Hyper-V 虚拟机与宿主之间的通信支持
 ; 注意： 需要你自己保证各个通信方式之间没有冲突
 type = namedpipe
 
@@ -136,7 +137,7 @@ role = client
 
 ; 套接字路径
 ; 必须指定
-; 适用于： namedpipe, unix, wsl2
+; 适用于： namedpipe, unix, assuan_emu
 ; 注意： 对于监听者，这个路径将会是其监听的套接字/管道的路径。
 ;       对于客户端，这个路径将会是要连接到的 agent 的路径
 ;       支持%VAR%格式的环境变量
@@ -144,7 +145,7 @@ path = \\.\pipe\openssh-ssh-agent
 
 ; 启用权限检查，通过设置对应文件的ACL和对请求发起者身份的检查来阻止其他用户的访问
 ; 可选
-; 适用于： namedpipe, pageant, unix, wsl2
+; 适用于： namedpipe, pageant, unix, assuan_emu
 ; 可用的选项：
 ;   - true         ; 默认
 ;   - false
@@ -152,8 +153,8 @@ enable-permission-check = true
 
 ; 设置套接字监听的地址
 ; 可选
-; 适用于： wsl2, hyperv
-; 注意： 对于 wsl2 方式：
+; 适用于： assuan_emu, hyperv
+; 注意： 对于 assuan_emu 方式：
 ;           默认值：0.0.0.0
 ;           由于WSL2采用了虚拟机的方案，虚拟机的网卡很可能被 Windows 识别为公共网络。
 ;           请针对此调整 Windows 防火墙，允许程序在公共网络上的访问，否则 WSL2 无法连接。
@@ -180,23 +181,23 @@ allow-non-elevated-access = false
 
 ; 指定想要转发的 gpg 套接字位置
 ; 可选
-; 适用于： unix, wsl2, hyperv
+; 适用于： unix, assuan_emu, hyperv
 ; 注意： 如果你想转发 gpg 套接字，请指定此选项。目标将作为 libassuan 模拟的 Unix 域套接字被连接。
 forward-socket-path = %APPDATA%\gnupg\S.gpg-agent
 
 ; 写入 LXSS 元数据
 ; 可选
-; 适用于： unix, wsl2
+; 适用于： unix, assuan_emu
 ; 可用选项：
 ;   - true
 ;   - false        ; 默认
 ; 注意： 对于'unix'通信方式，对应的元数据将被写入至其所在目录。
-;       而对于'wsl2'通信方式，对应的元数据将被写入至文件本身。
+;       而对于'assuan_emu'通信方式，对应的元数据将被写入至文件本身。
 write-lxss-metadata = false
 
 ; 将被写入的 LXSS 元数据
 ; 可选
-; 适用于： unix, wsl2
+; 适用于： unix, assuan_emu
 ; 注意： 未指定或者留空的项将不会被写入。unix套接字需要父目录有执行权限才能运作。
 metadata-uid = 1000
 metadata-gid = 1000
@@ -205,7 +206,7 @@ metadata-mode = 0600
 
 ## WSL 支持
 
-### WSL 1 支持
+### WSL1 支持
 
 WSL1 支持 Windows 原生 Unix 域套接字，所以可以在配置中定义`unix`方式的通信方式，然后在 WSL 中访问即可。
 
@@ -256,7 +257,7 @@ fi
 
 #### Helper
 
-此 helper 可以在内核不支持`VSOCK`之时使用。要求在配置中定义`wsl2`方式的通信方式。
+此 helper 可以在内核不支持`VSOCK`之时使用。要求在配置中定义`assuan_emu`方式的通信方式。
 
 在 linux 环境下编译`wsl2_helper`目录下的程序，得到的程序`ssh-agent-bridge-wsl2-helper`就是用来解决这个问题的。
 
@@ -297,7 +298,7 @@ ssh-agent-bridge-wsl2-helper -b \
 
 ## GPG 转发
 
-helper 使用的通信方式是`wsl2`，与 GPG4Win 使用的方式是兼容的，所以可以直接将`-r`选项中的路径指向 gpg-agent 创建的 socket 文件。在 WSL1 下这种直接的方式是没有问题的。然而在 WSL2 下，由于虚拟机网络隔离，而 gpg-agent 只监听于 localhost(127.0.0.1)。所以不能直接只使用 helper，需要在定义对应的通信方式后使用 socat 或者 helper 来帮助转发。
+helper 使用的通信方式是`assuan_emu`，与 GPG4Win 使用的方式是兼容的，所以可以直接将`-r`选项中的路径指向 gpg-agent 创建的 socket 文件。在 WSL1 下这种直接的方式是没有问题的。然而在 WSL2 下，由于虚拟机网络隔离，而 gpg-agent 只监听于 localhost(127.0.0.1)。所以不能直接只使用 helper，需要在定义对应的通信方式后使用 socat 或者 helper 来帮助转发。
 
 由于 gpg 不支持指定 socket 的路径，默认读取 `$GNUPGHOME`或`~/.gnupg` 目录下的 socket 文件，即 `S.gpg-agent` 等文件。
 
