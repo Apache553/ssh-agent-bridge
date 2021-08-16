@@ -244,7 +244,7 @@ XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
 在`.bashrc`中写入
 
 ```
-export SSH_AUTH_SOCK=~/.ssh/agent.socket
+export SSH_AUTH_SOCK=$HOME/.ssh/agent.socket
 SOCAT_OPT="SOCKET-CONNECT:40:0:x0000x9f7a4144x02000000x00000000"
 ss -lnx | grep -q $SSH_AUTH_SOCK
 if [ $? -ne 0 ]; then
@@ -287,20 +287,27 @@ Option:
 在`.bashrc`中写入
 
 ```
-export SSH_AUTH_SOCK=~/.ssh/agent.socket
+export SSH_AUTH_SOCK=$HOME/.ssh/agent.socket
 ssh-agent-bridge-wsl2-helper -b \
     -l $SSH_AUTH_SOCK \ 
     -r /mnt/c/Users/John/ssh-agent-bridge/wsl2-ssh-agent.socket \
-    -p ~/.ssh/helper-ssh-agent.pid 2>/dev/null
+    -p $HOME/.ssh/helper-ssh-agent.pid 2>/dev/null
 ```
 
 即可在登录时自动启动 helper 并设置环境变量。
 
 ## GPG 转发
 
-helper 使用的通信方式是`assuan_emu`，与 GPG4Win 使用的方式是兼容的，所以可以直接将`-r`选项中的路径指向 gpg-agent 创建的 socket 文件。在 WSL1 下这种直接的方式是没有问题的。然而在 WSL2 下，由于虚拟机网络隔离，而 gpg-agent 只监听于 localhost(127.0.0.1)。所以不能直接只使用 helper，需要在定义对应的通信方式后使用 socat 或者 helper 来帮助转发。
+在使用 GPG 转发时，对于不同的 WSL 版本有不同的方法。
 
-由于 gpg 不支持指定 socket 的路径，默认读取 `$GNUPGHOME`或`~/.gnupg` 目录下的 socket 文件，即 `S.gpg-agent` 等文件。
+在 WSL1 中，由于 helper 使用的通信方式是`assuan_emu`，与 GPG4Win 的协议是兼容的，所以可以直接将`-r`选项中的路径指向 gpg-agent 创建的 socket 文件（在`%APPDATA%\gnupg`中），并将`-l`选项中的路径设置为`$HOME/.gnupg/S.gpg-agent`或者其它对应的 socket 路径。
+或者如果你不想用 helper，编写使用`unix`通信方式的配置将 gpg-agent 的 socket 转发为 Unix 域套接字。然后再编写下面提到的`%Assuan%`文件来重定向 gpg 所使用的套接字。
+
+在 WSL2 中，由于虚拟机网络隔离，而 gpg-agent 只监听于 localhost(127.0.0.1)，虚拟机中无法访问 Windows 的 localhost。所以不能直接只使用 helper，必须在定义对应的通信方式后使用 socat 或者 helper 来帮助转发。
+
+### GPG 套接字重定向
+
+由于 gpg 不支持指定 socket 的路径，只会打开 `$GNUPGHOME`或`$HOME/.gnupg` 目录下的 socket，即 `S.gpg-agent` 等文件。
 
 你可以通过在该位置创建名字相同的普通文件，内容写入纯文本：
 
