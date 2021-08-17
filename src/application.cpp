@@ -255,7 +255,6 @@ int sab::Application::Run()
 			{
 				if (!l->Run())
 				{
-					ServiceSupport::GetInstance().ReportStatus(SERVICE_STOPPED, 1);
 					LogError(L"cannot start listener!");
 					SetEvent(errorEvent);
 				}

@@ -1,0 +1,3 @@
+[submodule "thirdparty/wil"]
+	path = thirdparty/wil
+	url = https://github.com/microsoft/wil.git

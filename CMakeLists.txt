@@ -3,4 +3,6 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12)
 
 PROJECT(ssh-agent-bridge)
 
+INCLUDE_DIRECTORIES(thirdparty/wil/include)
+
 ADD_SUBDIRECTORY(src)

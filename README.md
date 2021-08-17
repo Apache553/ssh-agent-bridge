@@ -160,8 +160,9 @@ enable-permission-check = true
 ;           请针对此调整 Windows 防火墙，允许程序在公共网络上的访问，否则 WSL2 无法连接。
 ;       对于 hyperv 方式：
 ;           默认值：{00000000-0000-0000-0000-000000000000} 即 HV_GUID_WILDCARD
-;           支持几个预定义的值：wildcard, children, loopback
+;           支持几个预定义的值：wildcard, children, loopback, wsl2
 ;           或者是形如 {00000000-0000-0000-0000-000000000000} 的 GUID
+;           设置为 wsl2 时，将会自动识别并使用 wsl2 虚拟机的 ID
 ;           参阅：https://bit.ly/3Cnml21
 listen-address = 0.0.0.0
 

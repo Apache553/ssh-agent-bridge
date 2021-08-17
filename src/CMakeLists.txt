@@ -27,9 +27,10 @@ SET(SOURCES
 	"protocol/libassuan_socket_emulation/listener.cpp"
 
 	"protocol/hyperv/listener.cpp"
+	"protocol/hyperv/rebind_notifier.cpp"
 	
 	"protocol/connection_manager.cpp"
-)
+	)
 
 ADD_EXECUTABLE(ssh-agent-bridge WIN32 ${SOURCES})
-TARGET_LINK_LIBRARIES(ssh-agent-bridge Ws2_32 Bcrypt)
+TARGET_LINK_LIBRARIES(ssh-agent-bridge Ws2_32 Bcrypt Wbemuuid)
