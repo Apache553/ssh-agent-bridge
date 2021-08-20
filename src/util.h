@@ -81,6 +81,9 @@ namespace sab
 #define LogHRESULT(hr) L"0x", std::setfill(L'0'), std::setw(8), std::right, \
 	std::hex, hr, L": ", sab::FormatLastError(hr, NULL)
 
+#define LogHRESULTInModule(hr, hmod) L"0x", std::setfill(L'0'), std::setw(8), std::right, \
+	std::hex, hr, L": ", sab::FormatLastError(hr, hmod)
+
 #define LogWSALastError L"0x", std::setfill(L'0'), std::setw(8), std::right, \
 	std::hex, WSAGetLastError(), L": ", sab::FormatLastError(WSAGetLastError(), NULL)
 

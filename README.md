@@ -11,6 +11,7 @@ Windows 平台上存在着多种 ssh agent 的实现，由于 Windows 平台的�
 - Windows native unix domain socket
 - Libassuan emulated unix domain socket
 - HyperV socket
+- Cygwin socket
 
 其中带有 * 标记的是支持的具体 agent 实现类型，其余的仅能支持监听请求。
 
@@ -125,6 +126,8 @@ loglevel = info
 ;                  ; 与 libassuan 的模拟 Unix 域套接字兼容的通信方式，用于兼容 gpg 和实现 WSL 2 的支持
 ;   - hyperv       ; listener
 ;                  ; 使用 AF_HYPERV 与 AF_VSOCK 实现的 WSL2/Hyper-V 虚拟机与宿主之间的通信支持
+;   - cygwin       ; listener
+;                  ; 兼容 Cygwin 的套接字
 ; 注意： 需要你自己保证各个通信方式之间没有冲突
 type = namedpipe
 
@@ -137,7 +140,7 @@ role = client
 
 ; 套接字路径
 ; 必须指定
-; 适用于： namedpipe, unix, assuan_emu
+; 适用于： namedpipe, unix, assuan_emu, cygwin
 ; 注意： 对于监听者，这个路径将会是其监听的套接字/管道的路径。
 ;       对于客户端，这个路径将会是要连接到的 agent 的路径
 ;       支持%VAR%格式的环境变量
@@ -145,7 +148,7 @@ path = \\.\pipe\openssh-ssh-agent
 
 ; 启用权限检查，通过设置对应文件的ACL和对请求发起者身份的检查来阻止其他用户的访问
 ; 可选
-; 适用于： namedpipe, pageant, unix, assuan_emu
+; 适用于： namedpipe, pageant, unix, assuan_emu, cygwin
 ; 可用的选项：
 ;   - true         ; 默认
 ;   - false
@@ -182,7 +185,7 @@ allow-non-elevated-access = false
 
 ; 指定想要转发的 gpg 套接字位置
 ; 可选
-; 适用于： unix, assuan_emu, hyperv
+; 适用于： unix, assuan_emu, hyperv, cygwin
 ; 注意： 如果你想转发 gpg 套接字，请指定此选项。目标将作为 libassuan 模拟的 Unix 域套接字被连接。
 forward-socket-path = %APPDATA%\gnupg\S.gpg-agent
 
@@ -219,13 +222,19 @@ WSL1 支持 Windows 原生 Unix 域套接字，所以可以在配置中定义`un
 
 #### socat
 
-socat 可以通过 AF_VSOCK 来连接到宿主系统上的 Integration Service。要求在宿主系统上写入对应的注册表项，在本程序中定义`hyperv`方式的通信方式。
+socat 可以通过 AF_VSOCK 来连接到宿主系统上的 Integration Service。要求在宿主系统上写入对应的注册表项，并在本程序中定义`hyperv`方式的通信方式。
 
 根目录下有一 powershell 脚本`hyperv_register.ps1`可以用于帮助您写入相应的注册表项和生成对应的 socat 命令行选项。
 
 ##### 注意事项
 
-由于 Microsoft 的限制，在供 WSL2 使用时必须显式指定其 VmId，而通常的 HyperV Linux虚拟机使用全零 GUID wildcard 就足够了。为了获得 WSL2 所在虚拟机的 ID，在 WSL2 运行中的情况下，在管理员权限命令行中执行：
+由于 Microsoft 的限制，在供 WSL2 使用时必须显式指定其 VmId，而通常的 HyperV Linux 虚拟机使用全零 GUID wildcard 就足够了。
+
+现在提供了`wsl2`可以作为`listen-address`字段的值，程序会自动查询 WSL2 虚拟机的 VmId，监测新 WSL2 虚拟机的创建并进行相应的更改。
+
+如果你想手动操作，请参阅以下步骤：
+
+为了获得 WSL2 所在虚拟机的 ID，在 WSL2 运行中的情况下，在管理员权限命令行中执行：
 
 ```
 hcsdiag.exe list

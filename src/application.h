@@ -60,6 +60,9 @@ namespace sab
 	std::shared_ptr<ProtocolListenerBase> SetupHyperVListener(const IniSection& section,
 		std::shared_ptr<IConnectionManager> manager,
 		std::shared_ptr<MessageDispatcher> dispatcher);
+	std::shared_ptr<ProtocolListenerBase> SetupCygwinListener(const IniSection& section,
+		std::shared_ptr<IConnectionManager> manager,
+		std::shared_ptr<MessageDispatcher> dispatcher);
 
 
 	std::shared_ptr<ProtocolClientBase> SetupPageantClient(const IniSection& section);

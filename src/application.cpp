@@ -8,6 +8,7 @@
 #include "protocol/pageant/listener.h"
 #include "protocol/unix/listener.h"
 #include "protocol/hyperv/listener.h"
+#include "protocol/cygwin/listener.h"
 #include "protocol/namedpipe/client.h"
 #include "protocol/pageant/client.h"
 #include "lxperm.h"
@@ -45,7 +46,15 @@ static TypeAction actionList[] = {
 	{L"pageant", sab::SetupPageantListener, sab::SetupPageantClient },
 	{L"assuan_emu", sab::SetupWsl2Listener },
 	{L"unix", sab::SetupUnixListener },
-	{L"hyperv", sab::SetupHyperVListener }
+	{L"hyperv", sab::SetupHyperVListener },
+	{L"cygwin", sab::SetupCygwinListener }
+};
+
+static std::vector<std::wstring> forwardEnabledList = {
+	L"unix",
+	L"assuan_emu",
+	L"hyperv",
+	L"cygwin"
 };
 
 static bool GetLxPermissionInfo(const sab::IniSection& section, sab::LxPermissionInfo& perm)
@@ -139,7 +148,7 @@ bool sab::Application::Initialize(const IniFile& config)
 		}
 		else
 		{
-			constexpr size_t actionListSize = sizeof(actionList) / sizeof(TypeAction);
+			constexpr size_t actionListSize = std::extent<decltype(actionList)>::value;
 			auto type = GetPropertyString(section, L"type");
 			auto role = GetPropertyString(section, L"role");
 			if (!type.second || !role.second)
@@ -164,15 +173,23 @@ bool sab::Application::Initialize(const IniFile& config)
 						// check gpg forward
 						auto targetPath = GetPropertyString(section, L"forward-socket-path");
 						std::shared_ptr<ProtocolListenerBase> ptr;
-						if (targetPath.second && (type.first == L"unix" || type.first == L"assuan_emu" || type.first == L"hyperv"))
+						if (targetPath.second)
 						{
-							LogDebug(L"Setup for gpg forwarding.");
-							ptr = actionList[i].createListener(section, gpgConnectionManager, dispatcher);
-							auto targetPathEx = ReplaceEnvironmentVariables(targetPath.first);
-							if (ptr) {
-								gpgConnectionManager->SetTarget(ptr, targetPathEx);
-								// auto sockPath = GetPropertyString(section, L"path");
-								// LogDebug(L"\"", targetPathEx, L"\" <-> \"", ReplaceEnvironmentVariables(sockPath.first), L"\"");
+							bool forwardEnabled = std::find(forwardEnabledList.begin(), forwardEnabledList.end(), type.first) != forwardEnabledList.end();
+							if (forwardEnabled) {
+								LogDebug(L"Setup for gpg forwarding.");
+								ptr = actionList[i].createListener(section, gpgConnectionManager, dispatcher);
+								auto targetPathEx = ReplaceEnvironmentVariables(targetPath.first);
+								if (ptr) {
+									gpgConnectionManager->SetTarget(ptr, targetPathEx);
+									// auto sockPath = GetPropertyString(section, L"path");
+									// LogDebug(L"\"", targetPathEx, L"\" <-> \"", ReplaceEnvironmentVariables(sockPath.first), L"\"");
+								}
+							}
+							else
+							{
+								LogError(L"gpg forwarding for this type is not supported!");
+								return false;
 							}
 						}
 						else {
@@ -486,6 +503,28 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::SetupHyperVListener(const IniSec
 	auto listenPort = GetPropertyString(section, L"listen-port");
 	auto listenServiceTemplate = GetPropertyString(section, L"listen-service-template");
 	return std::make_shared<HyperVSocketListener>(listenPort.first, manager, listenGUID.first, listenServiceTemplate.first);
+}
+
+std::shared_ptr<sab::ProtocolListenerBase> sab::SetupCygwinListener(const IniSection& section, std::shared_ptr<IConnectionManager> manager, std::shared_ptr<MessageDispatcher> dispatcher)
+{
+	auto socketPath = GetPropertyString(section, L"path");
+
+	auto enablePermissionCheck = GetPropertyBoolean(section, L"enable-permission-check");
+	LxPermissionInfo perm;
+
+	if (!socketPath.second)
+		return nullptr;
+
+	if (!enablePermissionCheck.second)
+		enablePermissionCheck.first = true;
+
+	socketPath.first = ReplaceEnvironmentVariables(socketPath.first);
+
+	return std::make_shared<CygwinSocketEmulationListener>(
+		socketPath.first,
+		L"127.0.0.1",
+		manager,
+		enablePermissionCheck.first);
 }
 
 std::shared_ptr<sab::ProtocolClientBase> sab::SetupPageantClient(const IniSection& section)

@@ -29,6 +29,8 @@ SET(SOURCES
 	"protocol/hyperv/listener.cpp"
 	"protocol/hyperv/rebind_notifier.cpp"
 	
+	"protocol/cygwin/listener.cpp"
+
 	"protocol/connection_manager.cpp"
 	)
 

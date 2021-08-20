@@ -83,7 +83,7 @@ GUID sab::WSL2SocketRebindNotifier::TryGetVmIdFromCmdline(const std::wstring& cm
 	int count = 0;
 
 	LogDebug(L"cmdline: ", cmdline);
-	
+
 	while (!iss.eof())
 	{
 		GUID guid_temp;
@@ -113,7 +113,7 @@ bool sab::WSL2SocketRebindNotifier::CheckWmiProcessOwner(IWbemClassObject* proce
 	hr = process->Get(L"__PATH", 0, &objectPath, nullptr, nullptr);
 	if (FAILED(hr))
 	{
-		LogError(L"cannot get wbem object path! ", LogHRESULT(hr));
+		LogError(L"cannot get wbem object path! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		return false;
 	}
 	LogDebug(L"get wbem object ", objectPath.bstrVal);
@@ -129,7 +129,7 @@ bool sab::WSL2SocketRebindNotifier::CheckWmiProcessOwner(IWbemClassObject* proce
 		nullptr);
 	if (FAILED(hr))
 	{
-		LogError(L"cannot execute GetOwnerSid method! ", LogHRESULT(hr));
+		LogError(L"cannot execute GetOwnerSid method! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		return false;
 	}
 
@@ -138,7 +138,7 @@ bool sab::WSL2SocketRebindNotifier::CheckWmiProcessOwner(IWbemClassObject* proce
 	hr = methodOut->Get(L"ReturnValue", 0, &returnValue, nullptr, nullptr);
 	if (FAILED(hr))
 	{
-		LogError(L"cannot get GetOwnerSid return value! ", LogHRESULT(hr));
+		LogError(L"cannot get GetOwnerSid return value! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		return false;
 	}
 	LogDebug(L"method GetOwnerSid returned ", returnValue.uintVal);
@@ -151,7 +151,7 @@ bool sab::WSL2SocketRebindNotifier::CheckWmiProcessOwner(IWbemClassObject* proce
 	hr = methodOut->Get(L"Sid", 0, &sid, nullptr, nullptr);
 	if (FAILED(hr))
 	{
-		LogError(L"cannot get GetOwnerSid returned Sid! ", LogHRESULT(hr));
+		LogError(L"cannot get GetOwnerSid returned Sid! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		return false;
 	}
 	LogDebug(L"method GetOwnerSid returned Sid ", sid.bstrVal);
@@ -171,7 +171,7 @@ GUID sab::WSL2SocketRebindNotifier::UpdateLastVmIdByWmiProcess(IWbemClassObject*
 	hr = process->Get(L"CommandLine", 0, &cmdline, nullptr, nullptr);
 	if (FAILED(hr))
 	{
-		LogError(L"cannot get Win32_Process.CommandLine! ", LogHRESULT(hr));
+		LogError(L"cannot get Win32_Process.CommandLine! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		return GUID_NULL;
 	}
 
@@ -205,7 +205,7 @@ GUID sab::WSL2SocketRebindNotifier::FlushLastWslVmId()
 		enumerator.put());
 	if (FAILED(hr))
 	{
-		LogError(L"services->ExecQuery() failed! ", LogHRESULT(hr));
+		LogError(L"services->ExecQuery() failed! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		return GUID_NULL;
 	}
 
@@ -261,7 +261,7 @@ bool sab::WSL2SocketRebindNotifier::Start()
 		eventSinkStub.get());
 	if (FAILED(hr))
 	{
-		LogError(L"services->ExecNotificationQueryAsync() failed! ", LogHRESULT(hr));
+		LogError(L"services->ExecNotificationQueryAsync() failed! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		started = false;
 		return false;
 	}
@@ -283,6 +283,8 @@ sab::WSL2SocketRebindNotifier::WSL2SocketRebindNotifier()
 	:lastVmId(GUID_NULL)
 {
 	HRESULT hr;
+
+	errormsgModule.reset(LoadLibraryW(L"C:\\Windows\\System32\\wbem\\wmiutils.dll"));
 
 	selfSid = GetCurrentUserSidString();
 	if (selfSid.empty())
@@ -330,7 +332,7 @@ sab::WSL2SocketRebindNotifier::WSL2SocketRebindNotifier()
 		0,
 		services.put());
 	if (FAILED(hr)) {
-		LogError(L"locator->ConnectServer() failed! ", LogHRESULT(hr));
+		LogError(L"locator->ConnectServer() failed! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		throw std::runtime_error("locator->ConnectServer() failed!");
 	}
 
@@ -367,7 +369,7 @@ sab::WSL2SocketRebindNotifier::WSL2SocketRebindNotifier()
 	hr = apartment->CreateObjectStub(eventSink.get(), eventSinkStubUnk.put_unknown());
 	if (FAILED(hr))
 	{
-		LogError(L"apartment->CreateObjectStub() failed! ", LogHRESULT(hr));
+		LogError(L"apartment->CreateObjectStub() failed! ", LogHRESULTInModule(hr, errormsgModule.get()));
 		throw std::runtime_error("apartment->CreateObjectStub() failed!");
 	}
 

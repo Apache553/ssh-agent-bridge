@@ -24,6 +24,8 @@ namespace sab
 
 		bool started = false;
 		std::mutex mutex;
+
+		wil::unique_hmodule errormsgModule;
 	private:
 		class EventSink :public IWbemObjectSink
 		{
