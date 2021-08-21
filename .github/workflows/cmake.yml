@@ -1,0 +1,37 @@
+name: CMake
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  BUILD_TYPE: RelWithDebInfo
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Import msvc envvars
+      uses: ilammy/msvc-dev-cmd@v1
+    
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -G "Ninja"
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: binary
+        path: |
+          ${{github.workspace}}/build/src/ssh-agent-bridge.exe
+          ${{github.workspace}}/build/src/ssh-agent-bridge.pdb
