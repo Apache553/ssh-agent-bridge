@@ -1,4 +1,4 @@
-name: CMake
+name: Test-Build
 
 on:
   push:
@@ -10,7 +10,7 @@ env:
   BUILD_TYPE: RelWithDebInfo
 
 jobs:
-  build:
+  build-win:
     runs-on: windows-latest
 
     steps:
@@ -28,10 +28,23 @@ jobs:
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
 
-    - name: Upload artifacts
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v2
       with:
         name: binary
         path: |
           ${{github.workspace}}/build/src/ssh-agent-bridge.exe
           ${{github.workspace}}/build/src/ssh-agent-bridge.pdb
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Build
+      working-directory: ${{github.workspace}}/wsl2_helper
+      run: make
