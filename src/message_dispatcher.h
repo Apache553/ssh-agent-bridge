@@ -26,18 +26,27 @@ namespace sab
 
 		std::thread workerThread;
 
-		std::shared_ptr<ProtocolClientBase> activeClient;
+		std::vector<std::shared_ptr<ProtocolClientBase>> clients;
 	public:
 		MessageDispatcher();
 
 		void PostRequest(SshMessageEnvelope* message, std::shared_ptr<void> holdKey);
 
-		void SetActiveClient(std::shared_ptr<ProtocolClientBase> client);
+		void AddClient(std::shared_ptr<ProtocolClientBase> client);
 		
 		bool Start();
 
 		void Stop();
 
 		~MessageDispatcher();
+	private:
+		bool ProcessRequest(SshMessageEnvelope& envelope);
+
+		bool HandleAddIdentity(SshMessageEnvelope& envelope);
+		bool HandleRemoveIdentity(SshMessageEnvelope& envelope);
+		bool HandleRemoveAllIdentity(SshMessageEnvelope& envelope);
+		bool HandleIdentitiesRequest(SshMessageEnvelope& envelope);
+		bool HandleSignRequest(SshMessageEnvelope& envelope);
+		bool HandleUnsupportedRequest(SshMessageEnvelope& envelope);
 	};
 }

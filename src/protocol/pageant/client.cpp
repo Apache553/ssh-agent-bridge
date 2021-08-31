@@ -3,12 +3,93 @@
 #include "../../util.h"
 #include "client.h"
 
+#include <wil/resource.h>
+
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <sddl.h>
 #include <WinSock2.h>
 
-sab::PageantClient::PageantClient()
+static bool FilterWindowProcess(HWND windowHandle, const std::wstring& processName)
+{
+	DWORD processId;
+
+	GetWindowThreadProcessId(windowHandle, &processId);
+
+	// eliminate our self
+	if (GetCurrentProcessId() == processId)
+		return false;
+
+	if (processName.empty())
+		return true;
+
+	wil::unique_handle processHandle;
+	processHandle.reset(
+		OpenProcess(
+			PROCESS_QUERY_LIMITED_INFORMATION,
+			FALSE,
+			processId));
+	if (!processHandle.is_valid())
+		return false;
+
+	DWORD bufferSize = MAX_PATH;
+	auto buffer = std::make_unique<wchar_t[]>(bufferSize);
+	BOOL result;
+	do {
+		result = QueryFullProcessImageNameW(
+			processHandle.get(),
+			PROCESS_NAME_NATIVE,
+			buffer.get(),
+			&bufferSize);
+		if (!result)
+		{
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				bufferSize += bufferSize / 2;
+				buffer = std::make_unique<wchar_t[]>(bufferSize);
+			}
+			else
+			{
+				return false;
+			}
+		}
+	} while (!result);
+
+	wchar_t* lastSlash = nullptr;
+	for (wchar_t* iter = buffer.get(); *iter != L'\0'; ++iter)
+	{
+		if (*iter == L'\\')
+			lastSlash = iter;
+	}
+	if (lastSlash == nullptr)
+		return false;
+	++lastSlash;
+
+	if (sab::EqualStringIgnoreCase(processName, lastSlash))
+		return true;
+
+	return false;
+}
+
+static HWND GetPageantWindowHandle(const std::wstring& processName)
+{
+	HWND result = NULL;
+	while ((result = FindWindowExW(NULL, result, L"Pageant", L"Pageant")))
+	{
+		if (FilterWindowProcess(result, processName))
+			return result;
+	}
+	result = NULL;
+	while ((result = FindWindowExW(HWND_MESSAGE, result, L"Pageant", L"Pageant")))
+	{
+		if (FilterWindowProcess(result, processName))
+			return result;
+	}
+	return NULL;
+}
+
+sab::PageantClient::PageantClient(const std::wstring& processName)
+	:processName(processName)
 {
 }
 
@@ -20,15 +101,13 @@ bool sab::PageantClient::SendSshMessage(SshMessageEnvelope* message)
 {
 	std::ostringstream oss;
 
-	LogDebug(L"start processing message");
-
 	if (message->length + HEADER_SIZE > MAX_PAGEANT_MESSAGE_SIZE)
 	{
 		LogDebug(L"message too long!");
 		return false;
 	}
 
-	HWND pageantWindow = FindWindowW(L"Pageant", L"Pageant");
+	HWND pageantWindow = GetPageantWindowHandle(processName);
 
 	if (pageantWindow == NULL)
 	{
@@ -62,7 +141,7 @@ bool sab::PageantClient::SendSshMessage(SshMessageEnvelope* message)
 		return false;
 	}
 	auto sdGuard = HandleGuard(sd, LocalFree);
-	
+
 	sa.lpSecurityDescriptor = sd;
 	sa.bInheritHandle = FALSE;
 
@@ -101,18 +180,18 @@ bool sab::PageantClient::SendSshMessage(SshMessageEnvelope* message)
 	cds.cbData = static_cast<int>(mapName.size()) + 1;
 	cds.lpData = reinterpret_cast<PVOID>(const_cast<char*>(mapName.c_str()));
 
-	LogDebug(L"send message: length=", message->length, L", type=0x", std::hex,
+	LogDebug(L"send request: length=", message->length, L", type=0x", std::hex,
 		std::setfill(L'0'), std::setw(2), message->data[0]);
 	// send message
 	if (SendMessageW(pageantWindow, WM_COPYDATA, 0,
 		reinterpret_cast<LPARAM>(&cds)) > 0)
 	{
-		LogDebug(L"send message successfully, reading reply.");
+		LogDebug(L"send request successfully, reading reply.");
 		memcpy(&beLength, charMem, HEADER_SIZE);
 		message->length = ntohl(beLength);
 		message->data.resize(message->length);
 		memcpy(message->data.data(), charMem + HEADER_SIZE, message->length);
-		LogDebug(L"recv message: length=", message->length, L", type=0x", std::hex,
+		LogDebug(L"recv reply: length=", message->length, L", type=0x", std::hex,
 			std::setfill(L'0'), std::setw(2), message->data[0]);
 		return true;
 	}

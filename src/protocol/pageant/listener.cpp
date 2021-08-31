@@ -70,6 +70,9 @@ bool sab::PageantListener::Run()
 		ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD);
 	}
 
+	// Set window z-order to let FindWindow finds our window first
+	SetWindowPos(windowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE);
+
 	LogDebug(L"start message loop!");
 	// message loop
 	MSG message;

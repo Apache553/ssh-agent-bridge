@@ -32,7 +32,10 @@ SET(SOURCES
 	"protocol/cygwin/listener.cpp"
 
 	"protocol/connection_manager.cpp"
-	)
+	
+	"protocol/protocol_ssh_agent.cpp"
+	"protocol/protocol_ssh_helper.cpp"
+)
 
 ADD_EXECUTABLE(ssh-agent-bridge WIN32 ${SOURCES})
 TARGET_LINK_LIBRARIES(ssh-agent-bridge Ws2_32 Bcrypt Wbemuuid)

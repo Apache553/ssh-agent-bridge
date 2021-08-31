@@ -211,18 +211,13 @@ bool sab::Application::Initialize(const IniFile& config)
 							LogError(L"type \"", type.first, L"\" does not support role \"", role.first, L"\"");
 							return false;
 						}
-						if (clientSetFlag)
-						{
-							LogError(L"cannot set more than once client!");
-							return false;
-						}
-						clientSetFlag = true;
 						auto ptr = actionList[i].createClient(section);
 						if (ptr == nullptr)
 						{
 							return false;
 						}
-						dispatcher->SetActiveClient(ptr);
+						clientSetFlag = true;
+						dispatcher->AddClient(ptr);
 					}
 					else
 					{
@@ -529,7 +524,8 @@ std::shared_ptr<sab::ProtocolListenerBase> sab::SetupCygwinListener(const IniSec
 
 std::shared_ptr<sab::ProtocolClientBase> sab::SetupPageantClient(const IniSection& section)
 {
-	return std::make_shared<PageantClient>();
+	auto restrictProcessName = GetPropertyString(section, L"restrict-process");
+	return std::make_shared<PageantClient>(restrictProcessName.first);
 }
 
 std::shared_ptr<sab::ProtocolClientBase> sab::SetupNamedPipeClient(const IniSection& section)
