@@ -65,6 +65,34 @@ Start-Process -Wait .\ssh-agent-bridge.exe '/Console'
 ```
 在命令行窗口实时观察输出。
 
+### 聚合
+
+在配置文件中指定多于一个 client 即可启用聚合功能。程序会依配置文件中每一节的名称字典序来依次请求各个上游，直到成功。并将结果汇总后会构造相应的回应后进行回复。
+
+#### 具体行为
+
+仅有以下列出的操作受到支持。
+
+- 添加密钥
+
+  依次请求各个上游，直到有一个成功或全部失败。
+
+- 删除密钥
+
+  依次请求各个上游，直到有一个成功或全部失败。
+
+- 删除所有密钥
+
+  依次请求各个上游，一定返回成功。
+
+- 列出密钥
+
+  依次请求各个上游，综合结果。
+
+- 签名
+
+  依次请求各个上游，直到有一个成功或全部失败。
+
 参考
 -----
 
@@ -111,7 +139,7 @@ Start-Process -Wait .\ssh-agent-bridge.exe '/Console'
 loglevel = info
 
 ; 定义一种通信方式
-; section 的名称可以修改为不重复的任意有效字符串，这里起名为 namedpipe
+; section 的名称可以修改为不重复的任意合法字符串，这里起名为 namedpipe
 [namedpipe]
 ; 指定类型
 ; 必须指定
@@ -182,6 +210,12 @@ listen-port = 0x44417A9F
 ;   - true
 ;   - false        ; 默认，Pageant 默认行为
 allow-non-elevated-access = false
+
+; 限定 pagent client 访问的进程名
+; 可选
+; 适用于： pageant
+; 注意： 任何情况下都会过滤掉 bridge 自身的 Pageant Listener
+restrict-process = pageant.exe
 
 ; 指定想要转发的 gpg 套接字位置
 ; 可选

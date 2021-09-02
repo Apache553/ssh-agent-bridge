@@ -100,9 +100,25 @@ bool sab::MessageDispatcher::ProcessRequest(SshMessageEnvelope& envelope)
 
 bool sab::MessageDispatcher::HandleAddIdentity(SshMessageEnvelope& envelope)
 {
-	// Send the request first defined upstream
-	auto& client = clients.front();
-	return client->SendSshMessage(&envelope);
+	// Iterate all upstream until request succeeds
+	for (auto& client : clients)
+	{
+		SshMessageEnvelope tmpMessage{ envelope };
+		bool status = client->SendSshMessage(&tmpMessage);
+		if (status)
+		{
+			if (tmpMessage.length > 0 && tmpMessage.data[0] == SSH_AGENT_SUCCESS)
+			{
+				envelope.length = tmpMessage.length;
+				envelope.data = std::move(tmpMessage.data);
+				return true;
+			}
+		}
+	}
+	SshAgentMessageBufferWriter writer(envelope);
+	writer.Init();
+	SshAgentMessageGenericFailure{}.ToBuffer(writer);
+	return true;
 }
 
 bool sab::MessageDispatcher::HandleRemoveIdentity(SshMessageEnvelope& envelope)
