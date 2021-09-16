@@ -27,6 +27,8 @@ namespace sab
 		std::thread workerThread;
 
 		std::vector<std::shared_ptr<ProtocolClientBase>> clients;
+
+		bool mangleCommentFlag;
 	public:
 		MessageDispatcher();
 
@@ -38,6 +40,8 @@ namespace sab
 
 		void Stop();
 
+		void SetKeyCommentMangling(bool flag);
+		
 		~MessageDispatcher();
 	private:
 		bool ProcessRequest(SshMessageEnvelope& envelope);

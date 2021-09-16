@@ -7,6 +7,8 @@ namespace sab
 {
 	class ProtocolClientBase :public std::enable_shared_from_this<ProtocolClientBase>
 	{
+	private:
+		std::wstring name;
 	public:
 		/// <summary>
 		/// send message to get reply
@@ -23,5 +25,8 @@ namespace sab
 		ProtocolClientBase& operator=(const ProtocolClientBase&) = delete;
 		
 		virtual ~ProtocolClientBase() = default;
+
+		std::wstring& Name() { return name; }
+		const std::wstring& Name()const { return name; }
 	};
 }

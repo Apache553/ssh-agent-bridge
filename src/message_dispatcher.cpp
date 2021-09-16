@@ -1,11 +1,12 @@
 
 
 #include "log.h"
+#include "util.h"
 #include "message_dispatcher.h"
 #include "protocol/protocol_ssh_agent.h"
 
 sab::MessageDispatcher::MessageDispatcher()
-	:cancelFlag(false)
+	:cancelFlag(false), mangleCommentFlag(true)
 {
 }
 
@@ -60,6 +61,11 @@ void sab::MessageDispatcher::Stop()
 	}
 	if (workerThread.joinable())
 		workerThread.join();
+}
+
+void sab::MessageDispatcher::SetKeyCommentMangling(bool flag)
+{
+	mangleCommentFlag = flag;
 }
 
 sab::MessageDispatcher::~MessageDispatcher()
@@ -176,6 +182,14 @@ bool sab::MessageDispatcher::HandleIdentitiesRequest(SshMessageEnvelope& envelop
 				if (partialAns.FromBuffer(reader))
 				{
 					LogDebug(L"get ", partialAns.identities.size(), L" indentities.");
+					if (mangleCommentFlag) {
+						for (auto& identity : partialAns.identities)
+						{
+							identity.comment += " [";
+							identity.comment += WideStringToUtf8String(client->Name());
+							identity.comment += ']';
+						}
+					}
 					ans.identities.insert(
 						ans.identities.end(),
 						std::make_move_iterator(partialAns.identities.begin()),

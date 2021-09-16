@@ -145,6 +145,12 @@ bool sab::Application::Initialize(const IniFile& config)
 				}
 				Logger::GetInstance().SetLogOutputLevel(logLevel);
 			}
+
+			auto mangleKeyComment = GetPropertyBoolean(section, L"mangle-key-comment");
+			if(mangleKeyComment.second)
+			{
+				dispatcher->SetKeyCommentMangling(mangleKeyComment.first);
+			}
 		}
 		else
 		{
@@ -217,6 +223,7 @@ bool sab::Application::Initialize(const IniFile& config)
 							return false;
 						}
 						clientSetFlag = true;
+						ptr->Name() = sectionName;
 						dispatcher->AddClient(ptr);
 					}
 					else
