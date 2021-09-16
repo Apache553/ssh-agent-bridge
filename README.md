@@ -69,6 +69,8 @@ Start-Process -Wait .\ssh-agent-bridge.exe '/Console'
 
 在配置文件中指定多于一个 client 即可启用聚合功能。程序会依配置文件中每一节的名称字典序来依次请求各个上游，直到成功。并将结果汇总后会构造相应的回应后进行回复。
 
+某些 agent 实现在某些操作上表现得很怪异（特指 gpg-agent 提供的 ssh agent），你可能想要避免把它作为第一个上游。
+
 #### 具体行为
 
 仅有以下列出的操作受到支持。
@@ -259,29 +261,6 @@ WSL1 支持 Windows 原生 Unix 域套接字，所以可以在配置中定义`un
 socat 可以通过 AF_VSOCK 来连接到宿主系统上的 Integration Service。要求在宿主系统上写入对应的注册表项，并在本程序中定义`hyperv`方式的通信方式。
 
 根目录下有一 powershell 脚本`hyperv_register.ps1`可以用于帮助您写入相应的注册表项和生成对应的 socat 命令行选项。
-
-##### 注意事项
-
-由于 Microsoft 的限制，在供 WSL2 使用时必须显式指定其 VmId，而通常的 HyperV Linux 虚拟机使用全零 GUID wildcard 就足够了。
-
-现在提供了`wsl2`可以作为`listen-address`字段的值，程序会自动查询 WSL2 虚拟机的 VmId，监测新 WSL2 虚拟机的创建并进行相应的更改。
-
-如果你想手动操作，请参阅以下步骤：
-
-为了获得 WSL2 所在虚拟机的 ID，在 WSL2 运行中的情况下，在管理员权限命令行中执行：
-
-```
-hcsdiag.exe list
-```
-
-可以得到类似以下的输出：
-
-```
-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-    VM,                         Running, XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX, WSL
-```
-
-`XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX`就是对应的 VmId，将`{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`填入相应配置的`listen-address`即可。
 
 ##### 示例
 
