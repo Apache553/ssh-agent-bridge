@@ -1,313 +1,306 @@
 ssh-agent-bridge
 =====
-为了让 Windows 平台上的 ssh agent 能适配多种 ssh client 和在 wsl 环境下使用的工具
+[中文](README.zh.md)
 
-Windows 平台上存在着多种 ssh agent 的实现，由于 Windows 平台的特殊性，这些 agent 程序都有一套自行实现的进程间通信方式作为在 Windows 10 发布之前都还不存在的 Unix 域套接字的替代。这导致了不同生态下的 ssh 客户端无法使用其他生态的 ssh agent。在 Windows 10 发布之后，更是多了 Windows 原生 Unix 域套接字的支持和WSL这一生态。
+A tool that enable multiple ssh client implementations to use a common ssh agent on Windows.
 
-本程序作为一个转译层，可以适配各种实现中的进程间通信方式，并将数据转发到指定的某一个具体 agent 实现上，从而使不同实现的 ssh 客户端也能够利用同一个 ssh agent。目前支持的通信方式有：
+The tool provides a daemon can forward ssh agent requests sent via different IPC methods to a common agent instance.
 
-- Windows 10 OpenSSH *
-- Putty (Pageant) *
-- Windows native unix domain socket
-- Libassuan emulated unix domain socket
-- HyperV socket
-- Cygwin socket
+Current Supported Methods:
+ - Windows 10 OpenSSH *
+ - Putty (Pageant) *
+ - Windows Unix Domain Socket
+ - libassuan emulated Unix Domain Socket
+ - HyperV Socket
+ - Cygwin Socket
 
-其中带有 * 标记的是支持的具体 agent 实现类型，其余的仅能支持监听请求。
+Methods with asterisk(*) means it can be an upstream agent instance, or it can listen requests only.
 
-另外，为了方便使用，本程序另外支持了对 gpg-agent 的转发，从而使得在 WSL 环境下也能利用 Windows 中正在运行的 gpg-agent 实例。
+Additionally, the tool provides a way to forward GnuPG sockets on Windows. You can use your gpg-agent instance under WSL environment.
 
-如何使用
+How to use
 -----
 
-### 准备工作
-编译或下载得到`ssh-agent-bridge.exe`并将它放在你喜欢的位置。
-编译需要 msvc 工具链，暂时不支持 mingw。
+### Prerequisite
+Download pre-build binary or build your own, put it in the folder you prefer.
+Building requires MSVC toolchain. MinGW is not supported.
 
+### Create your config
+The tool will try reading config from `%USERPROFILE%\ssh-agent-bridge\ssh-agent-bridge.ini` first if no config path is specified in command line. If that failed, it will try reading `ssh-agent-bridge.ini` in the directory of the executable.
+You need to create those folders manually if they don't exist.
+Refer to the example config in the project root and descriptions below for details.
 
-### 编辑配置
-在不指定配置文件位置的情况下，程序将会依次尝试读取`%USERPROFILE%\ssh-agent-bridge\ssh-agent-bridge.ini`和可执行文件所在目录下的`ssh-agent-bridge.ini`。
-建议将配置保存到前者的位置，如果对应目录不存在，你需要自己创建相应的目录。
-具体配置项请参阅下文和根目录下的配置文件。
+### Auto start
+You can use various methods to start the tool. 
+The tool supports running as a service for better management.
 
-### 作为服务运行
-
-用管理员命令行执行
+To install service, execute in administrator shell:
 ```
 ssh-agent-bridge.exe /InstallService
 ```
-将会创建一个Per-user service到系统中，在重新登录后生效，启动模式为手动启动。
-
-你可能需要执行
+The default mode of the service is OnDemand, you need to start the service manually.
+Run following command to set the mode to auto:
 ```
 Set-Service ssh-agent-bridge -StartupType auto
 ```
-来让它自动启动，在重新登录后生效。
 
-若需要卸载服务请执行
+To uninstall service, execute in administrator shell:
 ```
 ssh-agent-bridge.exe /UninstallService
 ```
-在重新登录后生效。
 
-如果迁移了可执行文件的位置，请重新安装服务。
+Those operations all requires a re-login to take effect.
+If you changed the path of the executable, you need to uninstall then install the service again.
 
-### 直接运行
+### Manual start
+You can start the tool directly if you don't want to taint Windows.
+In that case, a script might be needed to pass command line parameters to the tool.
 
-或者有的时候你不想安装服务，你也可以用你喜欢的方式来启动。命令行参数参见下文。
+### Logging
+Log will be written to `%APPDATA%\ssh-agent-bridge.log`.
 
-### 日志输出
-日志将会被保存到`%APPDATA%\ssh-agent-bridge.log`
-
-如果想要实时观察输出情况，使用 powershell 命令：
+In case of realtime inspection, use powershell command:
 ```
 Start-Process -Wait .\ssh-agent-bridge.exe '/Console'
 ```
-在命令行窗口实时观察输出。
 
-### 聚合
+### Aggregation
+Create more than one client in config to enable aggregation feature.
+The feature will make the tool to request all configured upstream agents in lexicographical order respectively until succeeded or get enough infomation, then assemble replies into one reply.
 
-在配置文件中指定多于一个 client 即可启用聚合功能。程序会依配置文件中每一节的名称字典序来依次请求各个上游，直到成功。并将结果汇总后会构造相应的回应后进行回复。
+Some agent implementations (like gpg-agent) have strange behaviors when add/remove keys to/from it. You may avoid doing such operations on those agents.
 
-某些 agent 实现在某些操作上表现得很怪异（特指 gpg-agent 提供的 ssh agent），你可能想要避免把它作为第一个上游。
+#### Supported Operations
+Although ssh agent may have many features, only those operations are supported.
 
-#### 具体行为
+- Add a key
+- Remove a key
+- Remove all keys
+- List keys
+- Sign with a key
 
-仅有以下列出的操作受到支持。
-
-- 添加密钥
-
-  依次请求各个上游，直到有一个成功或全部失败。
-
-- 删除密钥
-
-  依次请求各个上游，直到有一个成功或全部失败。
-
-- 删除所有密钥
-
-  依次请求各个上游，一定返回成功。
-
-- 列出密钥
-
-  依次请求各个上游，综合结果。
-
-- 签名
-
-  依次请求各个上游，直到有一个成功或全部失败。
-
-参考
+Details
 -----
 
-### 命令行选项
+### Command Line Options
 ```
 /Loglevel debug|info|warn|error
-设置输出日志等级
-
-/Service
-以服务运行所必要的选项
-
-/Debug
-通过OutputDebugString输出日志
-
-/Console
-创建或附加到一个控制台窗口用于输出日志，以服务运行时不可用。
-
-/Config <path>
-指定配置的文件的路径
-
-/InstallService
-安装服务
-
-/UninstallService
-卸载服务
 ```
+Override log output level.
 
-### 配置文件
-配置文件为 ini 格式，每一个 section 都指定了一个要适配的通信方式（除了`[general]`）
+```
+/Service
+```
+Required when running as a service.
 
-可选的项要么键名连带值一起指定，要么不写。
+```
+/Debug
+```
+Output log with `OutputDebugString`
 
-示例请参见根目录下的 ssh-agent-bridge.ini
+```
+/Console
+```
+Create or attach to a console to output log. Illegal when running as a service.
 
+```
+/Config <path>
+```
+Override default config path.
+
+```
+/InstallService
+```
+Install service.
+
+```
+/UninstallService
+```
+Uninstall service.
+
+### Config File
+Config file a simple ini file.
+Sections except `[general]` define a client/listener.
+
+The descriptions about `[general]` section:
 ```
 [general]
-; 设置日志输出等级
-; 可选
-; 可用的选项：
-;   - debug 
-;   - info [默认]
+; Set log output level
+; Optional
+; Available Options:
+;   - debug
+;   - info [default]
 ;   - warn
 ;   - error
 loglevel = info
 
-; 定义一种通信方式
-; section 的名称可以修改为不重复的任意合法字符串，这里起名为 namedpipe
+; Add extra string at the end of a key's comment to reflect its source
+; Optional
+; Available Options:
+;   - true [default]
+;   - false
+mangle-key-comment = true
+```
+
+To define a client/listener:
+```
+; Define a client/listener with name 'namedpipe'
 [namedpipe]
-; 指定类型
-; 必须指定
-; 可用的选项：
+
+; Set type
+; Required
+; Available Options:
 ;   - namedpipe    ; listener, client
-;                  ; Windows 10 原生提供的 ssh-agent 所使用的通信方式
+;                  ; Windows 10 OpenSSH
 ;   - pageant      ; listener, client
-;                  ; Putty 使用的通信方式
+;                  ; Putty
 ;   - unix         ; listener
-;                  ; Unix 域套接字，可以在 WSL 1 下直接使用
+;                  ; Windows Unix Domain Socket
 ;   - assuan_emu   ; listener
-;                  ; 与 libassuan 的模拟 Unix 域套接字兼容的通信方式，用于兼容 gpg 和实现 WSL 2 的支持
+;                  ; libassuan emulated Unix Domain Socket, can be used for gpg-agent and WSL
 ;   - hyperv       ; listener
-;                  ; 使用 AF_HYPERV 与 AF_VSOCK 实现的 WSL2/Hyper-V 虚拟机与宿主之间的通信支持
+;                  ; HyperV Socket
 ;   - cygwin       ; listener
-;                  ; 兼容 Cygwin 的套接字
-; 注意： 需要你自己保证各个通信方式之间没有冲突
+;                  ; Cygwin Socket
+; NOTE: You need to guarantee the whole config is legal.
 type = namedpipe
 
-; 指定其工作的角色
-; 必须指定
-; 可用的选项:
-;   - client       ; 作为客户端运行，收到的请求将会通过他向实际工作的 agent 转发
-;   - listener     ; 作为监听者运行，用于接收请求
+; Set role
+; Required
+; Available Options:
+;   - client       ; A client forwards requests to a running agent.
+;   - listener     ; A listener receives requests from ssh clients.
 role = client
 
-; 套接字路径
-; 必须指定
-; 适用于： namedpipe, unix, assuan_emu, cygwin
-; 注意： 对于监听者，这个路径将会是其监听的套接字/管道的路径。
-;       对于客户端，这个路径将会是要连接到的 agent 的路径
-;       支持%VAR%格式的环境变量
+; Set socket path
+; Required
+; Apply to: namedpipe, pageant, unix, assuan_emu, cygwin
+; NOTE: For clients, the path specifies the agent instance they forwards requests to.
+;       For listeners, the path specifies the socket file's path.
 path = \\.\pipe\openssh-ssh-agent
 
-; 启用权限检查，通过设置对应文件的ACL和对请求发起者身份的检查来阻止其他用户的访问
-; 可选
-; 适用于： namedpipe, pageant, unix, assuan_emu, cygwin
-; 可用的选项：
-;   - true         ; 默认
+; Enable permission checks, denying access from other users
+; Optional
+; Apply to: namedpipe, pageant, unix, assuan_emu, cygwin
+; Available Options:
+;   - true [default]
 ;   - false
 enable-permission-check = true
 
-; 设置套接字监听的地址
-; 可选
-; 适用于： assuan_emu, hyperv
-; 注意： 对于 assuan_emu 方式：
-;           默认值：0.0.0.0
-;           由于WSL2采用了虚拟机的方案，虚拟机的网卡很可能被 Windows 识别为公共网络。
-;           请针对此调整 Windows 防火墙，允许程序在公共网络上的访问，否则 WSL2 无法连接。
-;       对于 hyperv 方式：
-;           默认值：{00000000-0000-0000-0000-000000000000} 即 HV_GUID_WILDCARD
-;           支持几个预定义的值：wildcard, children, loopback, wsl2
-;           或者是形如 {00000000-0000-0000-0000-000000000000} 的 GUID
-;           设置为 wsl2 时，将会自动识别并使用 wsl2 虚拟机的 ID
-;           参阅：https://bit.ly/3Cnml21
+; Set listening address of socket
+; Optional
+; Apply to: assuan_emu, hyperv
+; NOTE: For assuan_emu, it means the listening address. 
+;         The default value is '0.0.0.0'.
+;       For hyperv, it means virtual mechine id which is allowed to connect. 
+;         The default value is '{00000000-0000-0000-0000-000000000000}' (HV_GUID_WILDCARD).
+;         You can also put several placeholders there: wildcard, children, loopback, wsl2
+;         Or a GUID represents a virtual mechine.
+;         When set to 'wsl2', the tool will detect WSL2 virtual mechine id automatically.
+;         For details, refer to https://bit.ly/3Cnml21
 listen-address = 0.0.0.0
 
-; 设置监听的端口
-; 可选
-; 适用于： hyperv
-; 默认值： 0x44417A9F
+; Set listening port
+; Optional
+; Apply to: hyperv
+; Default Value: 0x44417A9F
 listen-port = 0x44417A9F
 
-; 允许非特权进程访问在特权上下文中运行的 agent
-; 可选
-; 适用于： pageant
-; 可用的选项：
+; Allow non-elevated process to access when tool process is elevated
+; Optional
+; Apply to: pageant
+; Available Options:
 ;   - true
-;   - false        ; 默认，Pageant 默认行为
+;   - false [default] ; Pageant's behavior
 allow-non-elevated-access = false
 
-; 限定 pagent client 访问的进程名
-; 可选
-; 适用于： pageant
-; 注意： 任何情况下都会过滤掉 bridge 自身的 Pageant Listener
+; Restrict pageant client's target process name
+; Optional
+; Apply to: pageant
+; NOTE: The tool always ignores self when requesting pageant upstream.
 restrict-process = pageant.exe
 
-; 指定想要转发的 gpg 套接字位置
-; 可选
-; 适用于： unix, assuan_emu, hyperv, cygwin
-; 注意： 如果你想转发 gpg 套接字，请指定此选项。目标将作为 libassuan 模拟的 Unix 域套接字被连接。
+; Set the gpg socket path
+; Optional
+; Apply to: unix, assuan_emu, hyperv, cygwin
+; NOTE: If you don't want to use the listener to forward gpg socket, you must not set this property.
 forward-socket-path = %APPDATA%\gnupg\S.gpg-agent
 
-; 写入 LXSS 元数据
-; 可选
-; 适用于： unix, assuan_emu
-; 可用选项：
+; Write LXSS metadata
+; Optional
+; Apply to: unix, assuan_emu
+; Available Options:
 ;   - true
-;   - false        ; 默认
-; 注意： 对于'unix'通信方式，对应的元数据将被写入至其所在目录。
-;       而对于'assuan_emu'通信方式，对应的元数据将被写入至文件本身。
+;   - false [default]
+; NOTE: For 'unix' listeners, the metadata will be written to its parent directory.
+;       For other listeners, the metadata will be written to the file.
 write-lxss-metadata = false
 
-; 将被写入的 LXSS 元数据
-; 可选
-; 适用于： unix, assuan_emu
-; 注意： 未指定或者留空的项将不会被写入。unix套接字需要父目录有执行权限才能运作。
+; LXSS metadata will be written
+; Options
+; Apply to: unix, assuan_emu
+; NOTE: Not specified metadata property or null property will be written.
 metadata-uid = 1000
 metadata-gid = 1000
 metadata-mode = 0600
 ```
 
-## WSL 支持
+## WSL Support
 
-### WSL1 支持
+### WSL1 Support
+In WSL1 environment, the Windows Unix Domain Socket can interoperate with WSL.
+Define a `unix` listener, then set right environment variable to the socket should work.
 
-WSL1 支持 Windows 原生 Unix 域套接字，所以可以在配置中定义`unix`方式的通信方式，然后在 WSL 中访问即可。
+### WSL2 Support
+In WSL2 environment, the only ways to communicate with the host is HyperV Sockets and Tcp/Ip Sockets.
+So a helper program is needed to create a Unix Domain Socket.
 
-### WSL2 支持
+#### HyperV Socket: socat
+In this way, you need to register your own Integration Service with powershell script `hyperv_register.ps1`.
+The script will also output the parameter used by socat to connect the host.
 
-由于 WSL 2 移除了`AF_UNIX`在 WSL 与 Windows 的互操作能力以及 WSL 的网络栈与宿主相对隔离，要正常使用功能需要一个工具程序。
-
-目前可以使用 socat 通过`AF_VSOCK`转发或使用本项目实现的 helper 来转发。
-
-#### socat
-
-socat 可以通过 AF_VSOCK 来连接到宿主系统上的 Integration Service。要求在宿主系统上写入对应的注册表项，并在本程序中定义`hyperv`方式的通信方式。
-
-根目录下有一 powershell 脚本`hyperv_register.ps1`可以用于帮助您写入相应的注册表项和生成对应的 socat 命令行选项。
-
-##### 示例
-
-在`.bashrc`中写入
-
+##### Example
+Put the snippet into `.bashrc`:
 ```
 export SSH_AUTH_SOCK=$HOME/.ssh/agent.socket
 SOCAT_OPT="SOCKET-CONNECT:40:0:x0000x9f7a4144x02000000x00000000"
 ss -lnx | grep -q $SSH_AUTH_SOCK
 if [ $? -ne 0 ]; then
-	rm -f $SSH_AUTH_SOCK
+    rm -f $SSH_AUTH_SOCK
     (setsid nohup socat UNIX-LISTEN:$SSH_AUTH_SOCK,fork $SOCAT_OPT >/dev/null 2>&1 &)
 fi
 ```
+**Don't forget to replace `SOCAT_OPT`'s content with the script's output.**
 
-用脚本的输出内容的`*-CONNECT:*`内容替换`SOCAT_OPT`的内容（根据 socat 的版本选择对应的项），即可在登录时自动启动 socat 并设置环境变量。
+#### Tcp/Ip Socket: simple helper
+To use this method, you need to compile program under `wsl2_helper` directory.
+The helper programs can be used in both WSL1 and WSL2 since it uses libassuan's scheme to work.
+And it is possible to forward gpg-agent standalone.
 
-#### Helper
-
-此 helper 可以在内核不支持`VSOCK`之时使用。要求在配置中定义`assuan_emu`方式的通信方式。
-
-在 linux 环境下编译`wsl2_helper`目录下的程序，得到的程序`ssh-agent-bridge-wsl2-helper`就是用来解决这个问题的。
-
+##### Usage
 ```
 Usage: ./ssh-agent-bridge-wsl2-helper -r <remote> [-l local] [-a remoteAddress] [-b] [-p pidFile] [-c] [-h]
 Option:
         -l local
-                指定 WSL 环境中的 socket 路径
+                socket path in wsl environment. generated randomly if not specified, path written to stdout
         -r remote
-                指定 WSL 环境中的 windows 侧 socket 路径
+                socket path of listener in wsl environment
         -a remoteAddress
-                windows 的 ip 地址，未指定时将从默认路由中获取，若失败则设置为 127.0.0.1
+                windows host ip, deduced from default route if not specified
         -d
-                在创建 socket 时删除已存在的 socket 文件
+                delete local socket file if exists
         -b
-                fork 到后台运行
+                fork to background
         -p pidFile
-                指定 pid 文件，程序会将自身的 pid 写入文件中。在启动时检查该文件中的 pid 所代表的进程是否存活，若存活则直接退出。
+                write main process pid to file, if process in the file is alive, this instance will exit.
         -c
-                使用引用计数，必须与 -b 和 -p 一起使用。使得程序在启动时增加计数，父进程退出时减少计数。计数到 0 时后台程序退出。
+                enable refcount, increase refcount when started, decrease refcount when parent process exit
         -h
-                显示帮助信息
+                display this help message
 ```
 
-##### 示例
-
-在`.bashrc`中写入
+##### Example
+Put the snippet into `.bashrc`:
 
 ```
 export SSH_AUTH_SOCK=$HOME/.ssh/agent.socket
@@ -316,27 +309,22 @@ ssh-agent-bridge-wsl2-helper -b \
     -r /mnt/c/Users/John/ssh-agent-bridge/wsl2-ssh-agent.socket \
     -p $HOME/.ssh/helper-ssh-agent.pid 2>/dev/null
 ```
+**Don't forget to replace the path with your own one.**
 
-即可在登录时自动启动 helper 并设置环境变量。
+## GPG Forwarding
+Set `forward-socket-path` property in listener's config to make the listener a gpg forwarding listener.
 
-## GPG 转发
+In case of WSL1, you can use the helper directly or setup a `unix` listener.
 
-在使用 GPG 转发时，对于不同的 WSL 版本有不同的方法。
+In case of WSL2, you can only setup a `hyperv` or `assuan_emu` listener and setup the corresponding helper program to make forwarding work.
 
-在 WSL1 中，由于 helper 使用的通信方式是`assuan_emu`，与 GPG4Win 的协议是兼容的，所以可以直接将`-r`选项中的路径指向 gpg-agent 创建的 socket 文件（在`%APPDATA%\gnupg`中），并将`-l`选项中的路径设置为`$HOME/.gnupg/S.gpg-agent`或者其它对应的 socket 路径。
-或者如果你不想用 helper，编写使用`unix`通信方式的配置将 gpg-agent 的 socket 转发为 Unix 域套接字。然后再编写下面提到的`%Assuan%`文件来重定向 gpg 所使用的套接字。
+### Redirect GPG Socket
+GPG can only access socket files placed under `$GNUPGHOME` (or `$HOME/.gnupg` in case the environment variable is not set). When the socket is placed in other place, you need some extra work to redirect the socket.
 
-在 WSL2 中，由于虚拟机网络隔离，而 gpg-agent 只监听于 localhost(127.0.0.1)，虚拟机中无法访问 Windows 的 localhost。所以不能直接只使用 helper，必须在定义对应的通信方式后使用 socat 或者 helper 来帮助转发。
-
-### GPG 套接字重定向
-
-由于 gpg 不支持指定 socket 的路径，只会打开 `$GNUPGHOME`或`$HOME/.gnupg` 目录下的 socket，即 `S.gpg-agent` 等文件。
-
-你可以通过在该位置创建名字相同的普通文件，内容写入纯文本：
-
+Create a plain text file with the same file name with the socket under `$GNUPGHOME`.
+Write the snippet to the file:
 ```
 %Assuan%
 socket=/home/user/whatever.socket
 ```
-
-来将对 socket 的访问重定向到 `/home/user/whatever.socket`来实现自行指定 socket 路径。
+Then accesses to the socket will be redirected to `/home/user/whatever.socket`.
